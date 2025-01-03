@@ -355,15 +355,16 @@ void RenderMerge(uint3 id : SV_DispatchThreadID)
     if (any(fmod(coords, _ProbesCount) == 0 || (coords + 1) % _ProbesCount == 0))
     {
         // NOTE: Borders
-        _OutCascade[targetCoords] = float4(0.0f, 0.0f, 0.2f * _CascadeLevel, 1.0f);
-        _OutCascade[targetCoords] = float4(0.0f, 0.0f, 0.0f, 1.0f);
-        return;
+        // _OutCascade[targetCoords] = float4(0.0f, 0.0f, 0.2f * _CascadeLevel, 1.0f);
+        // _OutCascade[targetCoords] = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        // return;
     }
 
+    // BUG: Fix probe probeCenterUV!
     int2 probeCenterCoord = coords % _ProbesCount;
     float2 probeCenterUV = float2(probeCenterCoord) / _ProbesCount;
 
-    float cascadeLevel = _CascadeLevel;
+    const float cascadeLevel = _CascadeLevel;
 
     float2 angleId;
     const float cascadeFactor = pow(2.0f, cascadeLevel);
@@ -391,7 +392,7 @@ void RenderMerge(uint3 id : SV_DispatchThreadID)
 
     float3 directionWS = GetRay_DirectionFirst(angleId, cascadeLevel);
 
-    float rayScale = 0.1f;
+    float rayScale = 0.5f;
     int2 range = Ranges[cascadeLevel];
     float3 rayOriginWS = probeCenterWS + directionWS * rayScale * range.x;
     float3 rayEndWS = probeCenterWS + directionWS * rayScale * range.y;
@@ -449,6 +450,8 @@ void RenderMerge(uint3 id : SV_DispatchThreadID)
         }
     }
 
+
+    // MERGE!
     if (cascadeLevel > 4)
     {
         // radiance.rg += probeCenterUV;
@@ -461,13 +464,26 @@ void RenderMerge(uint3 id : SV_DispatchThreadID)
 
     int2 upperCascadeCoords = floor(coords * 0.5f);
     float2 bilinearWeight = frac(coords * 0.5f) + 0.25f;
+
+    // DUG: Wrong local coords! And wrong bilinearWeights!
+    // 02----12----22----32----42----42
+    // | D01 |     | E11 |     | F21 |
+    // 02----12----22----32----42----42
+    // |     |     |     |     |     |
+    // 01----11----21----31----41----41
+    // | A00 |     | B10 |     | C20 |
+    // 00----10----20----30----40----40
+    // TODO: Find upperProbeId
+    int2 lowerProbeId = coords % lowerCascadeSize;
     
-    int2 localCoords = fmod(upperCascadeCoords, upperCascadeSize);
+    // TODO: Found left bottom coord of upper cascade probe
+    int2 localCoords = fmod(floor(coords * 0.5f), upperCascadeSize);
 
     bilinearWeight = localCoords > upperCascadeSize - 1 ? float2(1.0f, 1.0f) : bilinearWeight;
     bilinearWeight = localCoords < 1 ? float2(0.0f, 0.0f) : bilinearWeight;
-    
-    localCoords = clamp(localCoords, 1, upperCascadeSize - 1);
+
+    // BUG: Coords offset to the top right corner
+    localCoords = clamp(localCoords, 0, upperCascadeSize - 1);
     upperCascadeCoords = (upperCascadeCoords / upperCascadeSize) * upperCascadeSize;
     upperCascadeCoords.x *= 2;
     upperCascadeCoords += localCoords;
