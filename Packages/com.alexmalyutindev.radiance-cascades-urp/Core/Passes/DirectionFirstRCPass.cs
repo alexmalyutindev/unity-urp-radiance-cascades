@@ -31,8 +31,8 @@ namespace AlexMalyutinDev.RadianceCascades
         {
             // 512 => 512 / 8 = 64 probes in row
             // TODO: Allocate texture with dimension (screen.width, screen.height) * 2 
-            int cascadeWidth = 2048; // cameraTextureDescriptor.width * 2;
-            int cascadeHeight = 1024; // cameraTextureDescriptor.height * 2;
+            int cascadeWidth = 1024 * 2; // cameraTextureDescriptor.width; // 2048; // 
+            int cascadeHeight = 512 * 2; // cameraTextureDescriptor.height; // 1024; // 
             var desc = new RenderTextureDescriptor(cascadeWidth, cascadeHeight)
             {
                 colorFormat = RenderTextureFormat.ARGBFloat,
