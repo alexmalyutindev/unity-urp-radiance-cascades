@@ -327,6 +327,94 @@ Shader "Hidden/RadianceCascade/Blit"
 
         Pass
         {
+            Name "Combine Direction First"
+            ZTest Off
+            ZWrite Off
+            Blend One One
+
+            HLSLPROGRAM
+            #pragma vertex Vertex
+            #pragma fragment Fragment
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/GlobalSamplers.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareNormalsTexture.hlsl"
+            #include "Common.hlsl"
+
+            TEXTURE2D_X(_BlitTexture);
+            TEXTURE2D(_GBuffer0); // Color
+            TEXTURE2D(_GBuffer1); // Color
+            TEXTURE2D(_GBuffer2); // Normals
+            TEXTURE2D(_GBuffer3); // Emmision
+            float4 _BlitTexture_TexelSize;
+            float3 _CameraForward;
+
+            struct Attributes
+            {
+                float4 positionOS : POSITION;
+                float2 uv : TEXCOORD0;
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float2 texcoord : TEXCOORD0;
+            };
+
+            Varyings Vertex(Attributes input)
+            {
+                Varyings output;
+
+                float4 pos = input.positionOS * 2.0f - 1.0f;
+                float2 uv = input.uv;
+
+                #if UNITY_UV_STARTS_AT_TOP
+                uv.y = 1 - uv.y;
+                #endif
+
+                // pos.z = UNITY_RAW_FAR_CLIP_VALUE;
+                output.positionCS = pos;
+                output.texcoord = uv;
+                return output;
+            }
+
+
+            half4 Fragment(Varyings input) : SV_TARGET
+            {
+                // TODO: Bilateral Upsampling.
+                // TODO: Fix uv, to trim cascade padding.
+                float2 uv = (input.texcoord * _BlitTexture_TexelSize.zw + 1.0f) / (_BlitTexture_TexelSize.zw + 2.0f);
+                uv = (uv + float2(0.0f, 1.0f)) / 2.0f;
+
+                float2 horizontalOffset = float2(1.0f / 2.0f, 0.0f);
+                float2 verticalOffset = float2(0.0f, 1.0f / 2.0f);
+
+                // TODO: Sample radiance like merging higher cascade!
+                half4 color = 0.0f;
+                UNITY_UNROLL
+                for (int x = 0; x < 2; x++)
+                {
+                    for (int y = 0; y < 2; y++)
+                    {
+                        float4 radiance = SAMPLE_TEXTURE2D_LOD(
+                            _BlitTexture,
+                            sampler_LinearClamp,
+                            uv + horizontalOffset * x - verticalOffset * y,
+                            0
+                        );
+                        color += radiance;
+                    }
+                }
+
+                half4 gbuffer0 = SAMPLE_TEXTURE2D_LOD(_GBuffer0, sampler_PointClamp, input.texcoord, 0);
+                return color * gbuffer0;
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
             Name "Combine Direction First Final"
             ZTest Off
             ZWrite Off
@@ -399,7 +487,8 @@ Shader "Hidden/RadianceCascade/Blit"
             {
                 float4 weights = float4(9, 3, 1, 3) / (abs(HiDepth - LowDepths) + _UpsampleTolerance);
                 float TotalWeight = dot(weights, 1.0f) + _NoiseFilterStrength;
-                float4 WeightedSum = a * weights.x + b * weights.y + c * weights.z + d * weights.w + _NoiseFilterStrength;
+                float4 WeightedSum = a * weights.x + b * weights.y + c * weights.z + d * weights.w +
+                    _NoiseFilterStrength;
                 return WeightedSum / TotalWeight;
             }
 
@@ -417,8 +506,9 @@ Shader "Hidden/RadianceCascade/Blit"
                 float4 radianceB = SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv + offset0.xz, 0);
                 float4 radianceC = SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv + offset0.zy, 0);
                 float4 radianceD = SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv + offset0.xy, 0);
-                
-                float4 radiance = BilateralUpsample(minMaxDepth.y, sceneDepth, radianceA, radianceB, radianceC, radianceD);
+
+                float4 radiance = BilateralUpsample(minMaxDepth.y, sceneDepth, radianceA, radianceB, radianceC,
+                                                    radianceD);
                 return radiance * gbuffer0;
 
                 float4 color = 0;

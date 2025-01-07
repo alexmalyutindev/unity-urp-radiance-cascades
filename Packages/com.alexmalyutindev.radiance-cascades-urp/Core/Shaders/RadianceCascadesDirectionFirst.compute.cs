@@ -87,7 +87,12 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.EndSample("RadianceCascade.RenderMerge");
         }
 
-        public void CombineCascades(CommandBuffer cmd, RTHandle radianceCascades, RTHandle target)
+        public void CombineCascades(
+            CommandBuffer cmd,
+            RTHandle radianceCascades,
+            RTHandle normals,
+            RTHandle target
+        )
         {
             var kernel = _combineCascadeKernel;
             cmd.BeginSample("RadianceCascade.CombineCascades");
@@ -113,6 +118,7 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.SetComputeVectorParam(_compute, "_FinalCascade_TexelSize", targetTexelSize);
             
             cmd.SetComputeTextureParam(_compute, kernel, "_FinalCascade", target);
+            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.NormalsTexture, normals);
             cmd.SetComputeTextureParam(_compute, kernel, "_UpperCascade", radianceCascades);
             
             cmd.DispatchCompute(_compute, kernel, targetRT.width / 8, targetRT.height / 8, 1);

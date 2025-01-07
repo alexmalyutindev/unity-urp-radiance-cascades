@@ -164,7 +164,7 @@ inline float4 LoadUpperRadiance(int2 coords)
 [numthreads(8, 4, 1)]
 void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 {
-    const float RayScale = 0.1f;
+    const float RayScale = 0.02f;
 
     int2 coords = int2(id.xy);
     int2 targetCoords = int2(id.xy);
@@ -292,27 +292,42 @@ void CombineCascade(uint3 id : SV_DispatchThreadID)
 {
     int2 targetCoords = int2(id.x, _FinalCascade_TexelSize.w - id.y);
 
-    int2 sideId = floor(2 * id.xy * _FinalCascade_TexelSize.xy);
-    int side = sideId.x + sideId.y * 2;
+    float2 sideId = floor(2 * id.xy * _FinalCascade_TexelSize.xy);
+    float side = sideId.x + sideId.y * 2;
 
-    int2 coords = fmod(id.xy * 2, _FinalCascade_TexelSize.zw) / 4;
+    int2 coords = fmod(id.xy * 2, _FinalCascade_TexelSize.zw) * 0.25f;
     coords.y = _CascadeBufferSize.y - coords.y;
     coords.x += side * _CascadeBufferSize.x * 0.25f;
-    float2 weight = max(0.0f, frac(id.xy * 0.5f) - 0.25f);
+    float2 weight = max(0.0f, frac(id.xy * 0.25f) - 0.25f);
 
     int2 offset = int2(0, -_CascadeBufferSize.y * 0.125f);
     float4 radiance = 0.0f;
 
-    radiance += LoadUpperCascadeBilinear(coords, weight);
-    radiance += LoadUpperCascadeBilinear(coords + offset, weight);
-    radiance += LoadUpperCascadeBilinear(coords + offset * 2, weight);
-    radiance += LoadUpperCascadeBilinear(coords + offset * 3, weight);
+    float2 uv = frac(id.xy * _FinalCascade_TexelSize.xy * 2.0f);
+    uv.y = 1.0f - uv.y;
+    float3 normalWS = SAMPLE_TEXTURE2D_LOD(_NormalsTexture, sampler_LinearClamp, uv, 0);
+
+    int2 c = coords;
+    UNITY_UNROLL
+    for (int i = 0; i < 4; i++)
+    {
+        float2 angleId = float2(side * 2.0f, i);
+        float3 direction = GetRay_DirectionFirst(angleId, 0);
+        radiance += LoadUpperCascadeBilinear(c, weight) * saturate(dot(direction, normalWS));
+        c.y += offset.y;
+    }
+    
     coords.x += _CascadeBufferSize.x * 0.125f;
 
-    radiance += LoadUpperCascadeBilinear(coords, weight);
-    radiance += LoadUpperCascadeBilinear(coords + offset, weight);
-    radiance += LoadUpperCascadeBilinear(coords + offset * 2, weight);
-    radiance += LoadUpperCascadeBilinear(coords + offset * 3, weight);
+    c = coords;
+    UNITY_UNROLL
+    for (int i = 0; i < 4; i++)
+    {
+        float2 angleId = float2(side * 2.0f + 1.0f, i);
+        float3 direction = GetRay_DirectionFirst(angleId, 0);
+        radiance += LoadUpperCascadeBilinear(c, weight) * saturate(dot(direction, normalWS));
+        c.y += offset.y;
+    }
 
-    _FinalCascade[targetCoords] = radiance * 0.25f * 0.5f;
+    _FinalCascade[targetCoords] = radiance;
 }

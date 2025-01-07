@@ -1,4 +1,5 @@
 using System;
+using InternalBridge;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -8,7 +9,7 @@ namespace AlexMalyutinDev.RadianceCascades
     public class DirectionFirstRCPass : ScriptableRenderPass, IDisposable
     {
         private readonly RadianceCascadesDirectionFirstCS _compute;
-        private RTHandle _cascade0;
+        private RTHandle _cascades;
         private RTHandle _intermediateBuffer;
 
         private readonly Material _blitMaterial;
@@ -41,7 +42,7 @@ namespace AlexMalyutinDev.RadianceCascades
                 sRGB = false,
                 enableRandomWrite = true,
             };
-            RenderingUtils.ReAllocateIfNeeded(ref _cascade0, desc, name: "RadianceCascades");
+            RenderingUtils.ReAllocateIfNeeded(ref _cascades, desc, name: "RadianceCascades");
 
             // TODO:
             desc = new RenderTextureDescriptor(cascadeWidth / 2, cascadeHeight / 2)
@@ -60,6 +61,7 @@ namespace AlexMalyutinDev.RadianceCascades
             var renderer = renderingData.cameraData.renderer;
             var colorBuffer = renderer.cameraColorTargetHandle;
             var depthBuffer = renderer.cameraDepthTargetHandle;
+            var normalsBuffer = renderer.GetGBuffer(2);
 
             var cmd = CommandBufferPool.Get();
 
@@ -73,10 +75,15 @@ namespace AlexMalyutinDev.RadianceCascades
                     _renderingData.MinMaxDepth,
                     _renderingData.SmoothedDepth,
                     _renderingData.BlurredColorBuffer,
-                    ref _cascade0
+                    ref _cascades
                 );
 
-                _compute.CombineCascades(cmd, _cascade0, _intermediateBuffer);
+                _compute.CombineCascades(
+                    cmd,
+                    _cascades,
+                    normalsBuffer,
+                    _intermediateBuffer
+                );
 
                 cmd.BeginSample("RadianceCascade.Combine");
                 {
@@ -104,7 +111,7 @@ namespace AlexMalyutinDev.RadianceCascades
 
         public void Dispose()
         {
-            _cascade0?.Release();
+            _cascades?.Release();
         }
     }
 }
