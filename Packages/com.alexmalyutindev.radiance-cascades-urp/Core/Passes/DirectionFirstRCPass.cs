@@ -1,5 +1,4 @@
 using System;
-using InternalBridge;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -11,10 +10,10 @@ namespace AlexMalyutinDev.RadianceCascades
         private readonly RadianceCascadesDirectionFirstCS _compute;
         private RTHandle _cascade0;
         private RTHandle _intermediateBuffer;
-        private RTHandle _intermediateBuffer2;
 
         private readonly Material _blitMaterial;
         private readonly RadianceCascadesRenderingData _renderingData;
+        private readonly MaterialPropertyBlock _props;
 
         public DirectionFirstRCPass(
             RadianceCascadeResources resources,
@@ -26,14 +25,16 @@ namespace AlexMalyutinDev.RadianceCascades
             // TODO: Make proper C# wrapper for Blit/Combine shader!
             _blitMaterial = resources.BlitMaterial;
             _renderingData = renderingData;
+            _props = new MaterialPropertyBlock();
         }
 
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
         {
-            // 512 => 512 / 8 = 64 probes in row
+            Vector2 renderSize = new Vector2(cameraTextureDescriptor.width, cameraTextureDescriptor.height);
             // TODO: Allocate texture with dimension (screen.width, screen.height) * 2 
-            int cascadeWidth = 1024 * 2; // cameraTextureDescriptor.width; // 2048; // 
-            int cascadeHeight = 512 * 2; // cameraTextureDescriptor.height; // 1024; // 
+            var minCascadeDim = 2 << 6;
+            int cascadeWidth = 2 * minCascadeDim * Mathf.CeilToInt(renderSize.x / minCascadeDim);
+            int cascadeHeight = 2 * minCascadeDim * Mathf.CeilToInt(renderSize.y / minCascadeDim);
             var desc = new RenderTextureDescriptor(cascadeWidth, cascadeHeight)
             {
                 colorFormat = RenderTextureFormat.ARGBFloat,
@@ -42,16 +43,20 @@ namespace AlexMalyutinDev.RadianceCascades
             };
             RenderingUtils.ReAllocateIfNeeded(ref _cascade0, desc, name: "RadianceCascades");
 
-            desc = new RenderTextureDescriptor(cameraTextureDescriptor.width / 2, cameraTextureDescriptor.height / 2)
+            // TODO:
+            desc = new RenderTextureDescriptor(cascadeWidth / 2, cascadeHeight / 2)
             {
                 colorFormat = RenderTextureFormat.ARGBFloat,
                 sRGB = false,
+                enableRandomWrite = true,
             };
             RenderingUtils.ReAllocateIfNeeded(ref _intermediateBuffer, desc, name: "RadianceBuffer");
         }
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
+            var rc = VolumeManager.instance.stack.GetComponent<RadianceCascades>();
+
             var renderer = renderingData.cameraData.renderer;
             var colorBuffer = renderer.cameraColorTargetHandle;
             var depthBuffer = renderer.cameraDepthTargetHandle;
@@ -71,14 +76,20 @@ namespace AlexMalyutinDev.RadianceCascades
                     ref _cascade0
                 );
 
+                _compute.CombineCascades(cmd, _cascade0, _intermediateBuffer);
+
                 cmd.BeginSample("RadianceCascade.Combine");
                 {
-                    cmd.SetRenderTarget(_intermediateBuffer);
-                    cmd.SetGlobalTexture(ShaderIds.GBuffer3, renderer.GetGBuffer(3));
-                    BlitUtils.BlitTexture(cmd, _cascade0, _blitMaterial, 2);
+                    // cmd.SetRenderTarget(_intermediateBuffer);
+                    // _props.SetTexture(ShaderIds.GBuffer3, renderer.GetGBuffer(3));
+                    // BlitUtils.BlitTexture(cmd, _cascade0, _blitMaterial, 2, _props);
 
                     cmd.SetRenderTarget(colorBuffer, depthBuffer);
-                    BlitUtils.BlitTexture(cmd, _intermediateBuffer, _blitMaterial, 3);
+
+                    _props.SetTexture(ShaderIds.MinMaxDepth, _renderingData.MinMaxDepth);
+                    _props.SetFloat("_UpsampleTolerance", rc.UpsampleTolerance.value);
+                    _props.SetFloat("_NoiseFilterStrength", rc.NoiseFilterStrength.value);
+                    BlitUtils.BlitTexture(cmd, _intermediateBuffer, _blitMaterial, 3, _props);
                 }
                 cmd.EndSample("RadianceCascade.Combine");
 

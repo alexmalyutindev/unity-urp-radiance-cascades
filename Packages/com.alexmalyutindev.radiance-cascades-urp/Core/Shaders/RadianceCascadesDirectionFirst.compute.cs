@@ -8,11 +8,13 @@ namespace AlexMalyutinDev.RadianceCascades
     {
         private readonly ComputeShader _compute;
         private readonly int _renderAndMergeKernel;
+        private readonly int _combineCascadeKernel;
 
         public RadianceCascadesDirectionFirstCS(ComputeShader compute)
         {
             _compute = compute;
             _renderAndMergeKernel = _compute.FindKernel("RenderAndMergeCascade");
+            _combineCascadeKernel = _compute.FindKernel("CombineCascade");
         }
 
         public void RenderMerge(
@@ -84,7 +86,40 @@ namespace AlexMalyutinDev.RadianceCascades
 
             cmd.EndSample("RadianceCascade.RenderMerge");
         }
-        
+
+        public void CombineCascades(CommandBuffer cmd, RTHandle radianceCascades, RTHandle target)
+        {
+            var kernel = _combineCascadeKernel;
+            cmd.BeginSample("RadianceCascade.CombineCascades");
+
+            cmd.SetRenderTarget(target);
+            
+            var radianceCascadesRT = radianceCascades.rt;
+            var cascadeBufferSize = new Vector4(
+                radianceCascadesRT.width,
+                radianceCascadesRT.height,
+                1.0f / radianceCascadesRT.width,
+                1.0f / radianceCascadesRT.height
+            );
+            cmd.SetComputeVectorParam(_compute, ShaderIds.CascadeBufferSize, cascadeBufferSize);
+
+            var targetRT = target.rt;
+            var targetTexelSize = new Vector4(
+                1.0f / targetRT.width,
+                1.0f / targetRT.height,
+                targetRT.width,
+                targetRT.height
+            );
+            cmd.SetComputeVectorParam(_compute, "_FinalCascade_TexelSize", targetTexelSize);
+            
+            cmd.SetComputeTextureParam(_compute, kernel, "_FinalCascade", target);
+            cmd.SetComputeTextureParam(_compute, kernel, "_UpperCascade", radianceCascades);
+            
+            cmd.DispatchCompute(_compute, kernel, targetRT.width / 8, targetRT.height / 8, 1);
+
+            cmd.EndSample("RadianceCascade.CombineCascades");
+        }
+
         public static Matrix4x4 CreateViewMatrix(Vector3 position, Quaternion rotation)
         {
             var view = Matrix4x4.TRS(position, rotation, Vector3.one).inverse;

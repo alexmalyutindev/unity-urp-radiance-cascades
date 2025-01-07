@@ -35,6 +35,7 @@ namespace AlexMalyutinDev.RadianceCascades.Voxelization
             _parametrizeKernel = compute.FindKernel("CSParameterize");
             _aggregateKernel = compute.FindKernel("CSAggregate");
 
+            // BUG: Memory leak!
             _consumeKernelArguments = new ComputeBuffer(3, sizeof(int), ComputeBufferType.IndirectArguments);
             _consumeKernelArguments.SetData(new int[] { 1, 1, 1 });
 

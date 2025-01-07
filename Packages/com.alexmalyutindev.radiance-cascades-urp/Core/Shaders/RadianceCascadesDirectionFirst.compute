@@ -1,4 +1,5 @@
 #pragma kernel RenderAndMergeCascade
+#pragma kernel CombineCascade
 
 #include "Common.hlsl"
 
@@ -40,7 +41,8 @@ RWTexture2D<float4> _OutCascade;
 
 static const int2 Ranges4[] =
 {
-    int2(0, 4),
+    int2(0, 1),
+    int2(1, 4),
     int2(4, 16),
     int2(16, 64),
     int2(64, 256),
@@ -80,7 +82,7 @@ float4 LoadUpperCascadeBilinear(int2 coords, float2 weights)
 
 inline float GetProbeDepth(float2 uv, int cascadeLevel)
 {
-#ifdef USE_SMOOTHED_DEPTH
+    #ifdef USE_SMOOTHED_DEPTH
 
     float probeDepth = SAMPLE_TEXTURE2D_LOD(
         _SmoothedDepth,
@@ -155,14 +157,14 @@ inline float4 LoadUpperRadiance(int2 coords)
     #else
     upperRadiance *= 0.5f;
     #endif
-    
+
     return upperRadiance;
 }
 
 [numthreads(8, 4, 1)]
 void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 {
-    const float RayScale = 0.02f;
+    const float RayScale = 0.1f;
 
     int2 coords = int2(id.xy);
     int2 targetCoords = int2(id.xy);
@@ -280,4 +282,37 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     radiance.a *= upperRadiance.a;
 
     _OutCascade[targetCoords] = radiance;
+}
+
+float4 _FinalCascade_TexelSize;
+RWTexture2D<float4> _FinalCascade;
+
+[numthreads(8, 8, 1)]
+void CombineCascade(uint3 id : SV_DispatchThreadID)
+{
+    int2 targetCoords = int2(id.x, _FinalCascade_TexelSize.w - id.y);
+
+    int2 sideId = floor(2 * id.xy * _FinalCascade_TexelSize.xy);
+    int side = sideId.x + sideId.y * 2;
+
+    int2 coords = fmod(id.xy * 2, _FinalCascade_TexelSize.zw) / 4;
+    coords.y = _CascadeBufferSize.y - coords.y;
+    coords.x += side * _CascadeBufferSize.x * 0.25f;
+    float2 weight = max(0.0f, frac(id.xy * 0.5f) - 0.25f);
+
+    int2 offset = int2(0, -_CascadeBufferSize.y * 0.125f);
+    float4 radiance = 0.0f;
+
+    radiance += LoadUpperCascadeBilinear(coords, weight);
+    radiance += LoadUpperCascadeBilinear(coords + offset, weight);
+    radiance += LoadUpperCascadeBilinear(coords + offset * 2, weight);
+    radiance += LoadUpperCascadeBilinear(coords + offset * 3, weight);
+    coords.x += _CascadeBufferSize.x * 0.125f;
+
+    radiance += LoadUpperCascadeBilinear(coords, weight);
+    radiance += LoadUpperCascadeBilinear(coords + offset, weight);
+    radiance += LoadUpperCascadeBilinear(coords + offset * 2, weight);
+    radiance += LoadUpperCascadeBilinear(coords + offset * 3, weight);
+
+    _FinalCascade[targetCoords] = radiance * 0.25f * 0.5f;
 }

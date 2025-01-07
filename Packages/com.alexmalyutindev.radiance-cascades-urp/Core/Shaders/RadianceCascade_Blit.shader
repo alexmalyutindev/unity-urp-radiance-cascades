@@ -291,7 +291,7 @@ Shader "Hidden/RadianceCascade/Blit"
             half4 Fragment(Varyings input) : SV_TARGET
             {
                 float3 normalWS = SAMPLE_TEXTURE2D_LOD(_GBuffer2, sampler_LinearClamp, input.texcoord, 0);
-                
+
                 // TODO: Bilateral Upsampling.
                 // TODO: Fix uv, to trim cascade padding.
                 float2 uv = (input.texcoord * _BlitTexture_TexelSize.zw + 4.0f) / (_BlitTexture_TexelSize.zw + 8.0f);
@@ -300,6 +300,7 @@ Shader "Hidden/RadianceCascade/Blit"
                 float2 horizontalOffset = float2(1.0f / 8.0f, 0.0f);
                 float2 verticalOffset = float2(0.0f, 1.0f / 8.0f);
 
+                // TODO: Sample radiance like merging higher cascade!
                 half4 color = 0.0f;
                 UNITY_UNROLL
                 for (int x = 0; x < 8; x++)
@@ -307,7 +308,7 @@ Shader "Hidden/RadianceCascade/Blit"
                     for (int y = 0; y < 4; y++)
                     {
                         float3 direction = GetRay_DirectionFirst(float2(x, y), 0);
-                        float NdotL = dot(direction, normalWS);
+                        float NdotL = saturate(dot(direction, normalWS));
 
                         float4 radiance = SAMPLE_TEXTURE2D_LOD(
                             _BlitTexture,
@@ -315,7 +316,7 @@ Shader "Hidden/RadianceCascade/Blit"
                             uv + horizontalOffset * x - verticalOffset * y,
                             0
                         );
-                        color += radiance * max(0, NdotL);
+                        color += radiance * NdotL;
                     }
                 }
 
@@ -330,6 +331,7 @@ Shader "Hidden/RadianceCascade/Blit"
             ZTest Off
             ZWrite Off
             Blend One One
+            // Blend One Zero
 
             HLSLPROGRAM
             #pragma vertex Vertex
@@ -343,8 +345,12 @@ Shader "Hidden/RadianceCascade/Blit"
             TEXTURE2D_X(_BlitTexture);
             TEXTURE2D(_GBuffer0);
             TEXTURE2D(_GBuffer3);
+            TEXTURE2D(_MinMaxDepth);
             float4 _BlitTexture_TexelSize;
             float3 _CameraForward;
+
+            float _UpsampleTolerance;
+            float _NoiseFilterStrength;
 
             struct Attributes
             {
@@ -375,10 +381,46 @@ Shader "Hidden/RadianceCascade/Blit"
                 return output;
             }
 
+            // GTAOBlurAndUpsample.compute
+            // We essentially want 5 weights:  4 for each low-res pixel and 1 to blend in when none of the 4 really
+            // match.  The filter strength is 1 / DeltaZTolerance.  So a tolerance of 0.01 would yield a strength of 100.
+            // Note that a perfect match of low to high depths would yield a weight of 10^6, completely superceding any
+            // noise filtering.  The noise filter is intended to soften the effects of shimmering when the high-res depth
+            // buffer has a lot of small holes in it causing the low-res depth buffer to inaccurately represent it.
+            float BilateralUpsample(float HiDepth, float4 LowDepths, float4 LowAO)
+            {
+                float4 weights = float4(9, 3, 1, 3) / (abs(HiDepth - LowDepths) + _UpsampleTolerance);
+                float TotalWeight = dot(weights, 1) + _NoiseFilterStrength;
+                float WeightedSum = dot(LowAO, weights) + _NoiseFilterStrength;
+                return WeightedSum / TotalWeight;
+            }
+
+            float4 BilateralUpsample(float HiDepth, float4 LowDepths, float4 a, float4 b, float4 c, float4 d)
+            {
+                float4 weights = float4(9, 3, 1, 3) / (abs(HiDepth - LowDepths) + _UpsampleTolerance);
+                float TotalWeight = dot(weights, 1.0f) + _NoiseFilterStrength;
+                float4 WeightedSum = a * weights.x + b * weights.y + c * weights.z + d * weights.w + _NoiseFilterStrength;
+                return WeightedSum / TotalWeight;
+            }
 
             half4 Fragment(Varyings input) : SV_TARGET
             {
                 float2 uv = input.texcoord;
+                half4 gbuffer0 = SAMPLE_TEXTURE2D_LOD(_GBuffer0, sampler_PointClamp, uv, 0);
+
+                float2 minMaxDepth = SAMPLE_TEXTURE2D_LOD(_MinMaxDepth, sampler_PointClamp, uv, 0).xy;
+                float4 sceneDepth = GATHER_TEXTURE2D(_CameraDepthTexture, sampler_PointClamp, uv);
+
+
+                float3 offset0 = float3(_BlitTexture_TexelSize.xy, 0.0f);
+                float4 radianceA = SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv, 0);
+                float4 radianceB = SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv + offset0.xz, 0);
+                float4 radianceC = SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv + offset0.zy, 0);
+                float4 radianceD = SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv + offset0.xy, 0);
+                
+                float4 radiance = BilateralUpsample(minMaxDepth.y, sceneDepth, radianceA, radianceB, radianceC, radianceD);
+                return radiance * gbuffer0;
+
                 float4 color = 0;
                 float4 offset = 0.64f * float4(1.0f, 1.0f, -1.0f, -1.0f) * _BlitTexture_TexelSize.xyxy;
                 color += SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv + offset.xy, 0);
@@ -387,14 +429,6 @@ Shader "Hidden/RadianceCascade/Blit"
                 color += SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv + offset.zw, 0);
                 color *= 0.25f;
 
-                // TODO: Bilateral Upsampling.
-                // float depth0 = SampleSceneDepth(floor(uv * _BlitTexture_TexelSize.zw) * _BlitTexture_TexelSize.xy);
-                // float depth1 = SampleSceneDepth(uv);
-                // color *= (depth0 > depth1);
-
-                half4 gbuffer0 = SAMPLE_TEXTURE2D_LOD(_GBuffer0, sampler_PointClamp, input.texcoord, 0);
-                // half4 gbuffer3 = SAMPLE_TEXTURE2D_LOD(_GBuffer3, sampler_PointClamp, input.texcoord, 0);
-                // gbuffer0 += gbuffer3;
                 return color * gbuffer0;
             }
             ENDHLSL

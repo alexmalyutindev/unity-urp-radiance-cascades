@@ -23,6 +23,13 @@ namespace AlexMalyutinDev.RadianceCascades
             _props.SetTexture(BlitTextureId, texture);
             cmd.DrawMesh(s_QuadMesh, Matrix4x4.identity, material, 0, pass, _props);
         }
+        
+        public static void BlitTexture(CommandBuffer cmd, Texture texture, Material material, int pass, MaterialPropertyBlock props)
+        {
+            Initialize();
+            props.SetTexture(BlitTextureId, texture);
+            cmd.DrawMesh(s_QuadMesh, Matrix4x4.identity, material, 0, pass, props);
+        }
 
         public static void Initialize()
         {
