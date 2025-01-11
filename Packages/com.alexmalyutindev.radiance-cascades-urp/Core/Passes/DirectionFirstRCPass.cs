@@ -67,6 +67,7 @@ namespace AlexMalyutinDev.RadianceCascades
 
             using (new ProfilingScope(cmd, profilingSampler))
             {
+                // TODO: Make Lighting buffer with prepared NdotL for radiance rays!
                 _compute.RenderMerge(
                     cmd,
                     ref renderingData.cameraData,
@@ -96,6 +97,7 @@ namespace AlexMalyutinDev.RadianceCascades
                     _props.SetTexture(ShaderIds.MinMaxDepth, _renderingData.MinMaxDepth);
                     _props.SetFloat("_UpsampleTolerance", rc.UpsampleTolerance.value);
                     _props.SetFloat("_NoiseFilterStrength", rc.NoiseFilterStrength.value);
+                    _props.SetVector("_RenderTargetSize", new Vector4(colorBuffer.rt.width, colorBuffer.rt.height));
                     BlitUtils.BlitTexture(cmd, _intermediateBuffer, _blitMaterial, 3, _props);
                 }
                 cmd.EndSample("RadianceCascade.Combine");

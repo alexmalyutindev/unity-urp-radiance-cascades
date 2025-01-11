@@ -331,6 +331,7 @@ Shader "Hidden/RadianceCascade/Blit"
             ZTest Off
             ZWrite Off
             Blend One One
+            // Blend One Zero
 
             HLSLPROGRAM
             #pragma vertex Vertex
@@ -349,6 +350,7 @@ Shader "Hidden/RadianceCascade/Blit"
             TEXTURE2D(_GBuffer3); // Emmision
             float4 _BlitTexture_TexelSize;
             float3 _CameraForward;
+            int2 _RenderTargetSize;
 
             struct Attributes
             {
@@ -382,8 +384,19 @@ Shader "Hidden/RadianceCascade/Blit"
 
             half4 Fragment(Varyings input) : SV_TARGET
             {
+                int2 offset = _BlitTexture_TexelSize.zw - _RenderTargetSize.xy;
+                int3 cascadeSizeOffset = int3(round(0.5f * _BlitTexture_TexelSize.zw), 0);
+                int2 coords = floor((input.positionCS.xy + offset) * 0.5f);
+                float4 r = LOAD_TEXTURE2D(_BlitTexture, coords);
+                r += LOAD_TEXTURE2D(_BlitTexture, coords + cascadeSizeOffset.xz);
+                r += LOAD_TEXTURE2D(_BlitTexture, coords + cascadeSizeOffset.zy);
+                r += LOAD_TEXTURE2D(_BlitTexture, coords + cascadeSizeOffset.xy);
+                
+                return r;
+                
                 // TODO: Bilateral Upsampling.
                 // TODO: Fix uv, to trim cascade padding.
+                float3 normalWS = SAMPLE_TEXTURE2D_LOD(_CameraNormalsTexture, sampler_LinearClamp, input.texcoord, 0);
                 float2 uv = (input.texcoord * _BlitTexture_TexelSize.zw + 1.0f) / (_BlitTexture_TexelSize.zw + 2.0f);
                 uv = (uv + float2(0.0f, 1.0f)) / 2.0f;
 
@@ -393,9 +406,10 @@ Shader "Hidden/RadianceCascade/Blit"
                 // TODO: Sample radiance like merging higher cascade!
                 half4 color = 0.0f;
                 UNITY_UNROLL
-                for (int x = 0; x < 2; x++)
+                for (float y = 0; y < 2; y++)
                 {
-                    for (int y = 0; y < 2; y++)
+                    UNITY_UNROLL
+                    for (float x = 0; x < 2; x++)
                     {
                         float4 radiance = SAMPLE_TEXTURE2D_LOD(
                             _BlitTexture,
@@ -404,6 +418,11 @@ Shader "Hidden/RadianceCascade/Blit"
                             0
                         );
                         color += radiance;
+
+                        // float2 dir = float2(0.0f, 0.0f);
+                        // sincos((x + y * 2.0f + 0.5f) * HALF_PI, dir.x, dir.y);
+                        // float NdotL = saturate(dot(normalize(normalWS.xz), dir));
+                        // color += radiance * NdotL;
                     }
                 }
 

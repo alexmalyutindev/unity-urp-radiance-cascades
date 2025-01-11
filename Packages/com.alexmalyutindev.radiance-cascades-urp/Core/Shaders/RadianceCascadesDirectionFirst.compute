@@ -329,5 +329,5 @@ void CombineCascade(uint3 id : SV_DispatchThreadID)
         c.y += offset.y;
     }
 
-    _FinalCascade[targetCoords] = radiance;
+    _FinalCascade[targetCoords] = radiance * 0.5f;
 }
