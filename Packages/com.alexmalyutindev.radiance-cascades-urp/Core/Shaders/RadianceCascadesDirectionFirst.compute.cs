@@ -117,7 +117,7 @@ namespace AlexMalyutinDev.RadianceCascades
             
             cmd.SetComputeTextureParam(_compute, kernel, "_FinalCascade", target);
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.NormalsTexture, normals);
-            cmd.SetComputeTextureParam(_compute, kernel, "_UpperCascade", radianceCascades);
+            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.OutCascade, radianceCascades);
             
             cmd.DispatchCompute(_compute, kernel, targetRT.width / 8, targetRT.height / 8, 1);
 
