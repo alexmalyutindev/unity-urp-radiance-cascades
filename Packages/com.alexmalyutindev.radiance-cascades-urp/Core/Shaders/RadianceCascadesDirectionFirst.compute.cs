@@ -75,13 +75,11 @@ namespace AlexMalyutinDev.RadianceCascades
                 cmd.SetComputeIntParam(_compute, "_CascadeLevel", cascadeLevel);
 
                 _compute.GetKernelThreadGroupSizes(kernel, out var x, out var y, out _);
-                cmd.DispatchCompute(
-                    _compute,
-                    kernel,
-                    Mathf.CeilToInt(cascadeBufferSize.x / x),
-                    Mathf.CeilToInt(cascadeBufferSize.y / (y * (1 << cascadeLevel))),
-                    1
-                );
+                var threadGroupsX = Mathf.CeilToInt(cascadeBufferSize.x / x);
+                // TODO: Spawn less probes, cus then outside of screen!
+                // var threadGroupsY = Mathf.CeilToInt((2.0f * color.rt.height) / (y * (1 << cascadeLevel)))
+                var threadGroupsY = Mathf.CeilToInt(cascadeBufferSize.y / (y * (1 << cascadeLevel)));
+                cmd.DispatchCompute(_compute, kernel, threadGroupsX, threadGroupsY, 1);
             }
 
             cmd.EndSample("RadianceCascade.RenderMerge");

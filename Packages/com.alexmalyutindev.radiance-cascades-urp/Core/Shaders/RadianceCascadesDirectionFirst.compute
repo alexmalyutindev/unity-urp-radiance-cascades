@@ -188,6 +188,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
     // BUG: Fix probe probeCenterUV!
     int2 probeCenterCoord = coords % _ProbesCount;
+    // TODO: Use buffer bigger than RenderTarget, for alignment, drop probes that out of screen
     float2 probeCenterUV = float2(probeCenterCoord + 1.0f) / (_ProbesCount + 1.0f);
 
     const float cascadeLevel = _CascadeLevel;
