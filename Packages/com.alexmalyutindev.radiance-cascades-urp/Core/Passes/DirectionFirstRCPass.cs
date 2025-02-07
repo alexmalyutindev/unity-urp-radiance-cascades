@@ -51,7 +51,7 @@ namespace AlexMalyutinDev.RadianceCascades
             };
             RenderingUtils.ReAllocateIfNeeded(ref _radianceSH, desc, name: "RadianceSH");
 
-            desc = new RenderTextureDescriptor(cameraTextureDescriptor.width / 2, cameraTextureDescriptor.height / 2)
+            desc = new RenderTextureDescriptor(cameraTextureDescriptor.width, cameraTextureDescriptor.height)
             {
                 colorFormat = RenderTextureFormat.ARGBFloat,
                 sRGB = false,
@@ -92,6 +92,7 @@ namespace AlexMalyutinDev.RadianceCascades
                     {
                         cmd.SetRenderTarget(_intermediateBuffer);
                         cmd.SetGlobalTexture(ShaderIds.GBuffer3, renderer.GetGBuffer(3));
+                        cmd.SetGlobalTexture(ShaderIds.MinMaxDepth, _renderingData.MinMaxDepth);
                         BlitUtils.BlitTexture(cmd, _cascade0, _blitMaterial, 2);
                         
                         cmd.SetRenderTarget(colorBuffer, depthBuffer);

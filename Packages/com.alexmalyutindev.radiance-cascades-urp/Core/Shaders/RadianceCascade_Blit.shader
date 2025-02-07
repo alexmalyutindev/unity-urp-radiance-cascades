@@ -255,6 +255,7 @@ Shader "Hidden/RadianceCascade/Blit"
 
             TEXTURE2D_X(_BlitTexture);
             TEXTURE2D(_MinMaxDepth);
+            float4 _MinMaxDepth_TexelSize;
 
             TEXTURE2D(_GBuffer0); // Color
             TEXTURE2D(_GBuffer1); // Color
@@ -299,17 +300,29 @@ Shader "Hidden/RadianceCascade/Blit"
 
                 // TODO: Bilateral Upsampling.
                 float depth = SAMPLE_TEXTURE2D_LOD(_CameraDepthTexture, sampler_PointClamp, input.texcoord, 0);
-                float2 lowerDepth = SAMPLE_TEXTURE2D_LOD(_MinMaxDepth, sampler_PointClamp, input.texcoord, 0);
+                int2 coords = (_MinMaxDepth_TexelSize.zw - 1) * input.texcoord;
+                float2 probeDepth0 = LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords, 0);
+                float2 probeDepth1 = LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords + int2(1, 0), 0);
+                float2 probeDepth2 = LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords + int2(0, 1), 0);
+                float2 probeDepth3 = LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords + int2(1, 1), 0);
+                // float2 probeDepth = LinearEyeDepth(SAMPLE_TEXTURE2D_LOD(_MinMaxDepth, sampler_LinearClamp, input.texcoord, 0), _ZBufferParams);
+                // return float4(abs(probeDepth0 - depth), 0, 1);
+
+                float2 probeDepth = float2(
+                    min(probeDepth0.x, min(probeDepth1.x, min(probeDepth2.x, probeDepth3.x))), 
+                    max(probeDepth0.y, min(probeDepth1.y, min(probeDepth2.y, probeDepth3.y)))
+                );
+                // return float4(abs(probeDepth - probeDepth0), 0, 1);
 
                 depth = LinearEyeDepth(depth, _ZBufferParams);
-                lowerDepth.x = LinearEyeDepth(lowerDepth.x, _ZBufferParams);
-                lowerDepth.y = LinearEyeDepth(lowerDepth.y, _ZBufferParams);
+                probeDepth = LinearEyeDepth(probeDepth, _ZBufferParams);
 
-                float depthThikness = abs(lowerDepth.x - lowerDepth.y);
-                float depthWeight = saturate((lowerDepth.x - depth) / depthThikness);
+                float depthThikness = max(abs(probeDepth.x - probeDepth.y), 0.000001f);
+                float depthWeight = saturate((probeDepth.x - depth) / depthThikness);
 
                 // TODO: Fix uv, to trim cascade padding.
                 float2 uv = (input.texcoord * _BlitTexture_TexelSize.zw + 4.0f) / (_BlitTexture_TexelSize.zw + 8.0f);
+                uv = input.texcoord;
                 uv = (uv + float2(0.0f, 7.0f)) / 8.0f;
 
                 float2 horizontalOffset = float2(1.0f / 8.0f, 0.0f);
@@ -337,7 +350,7 @@ Shader "Hidden/RadianceCascade/Blit"
                             0
                         );
                         float4 radiance = lerp(radianceMin, radianceMax, depthWeight);
-                        color += radiance * max(0, NdotL);
+                        color += radiance; // * max(0, NdotL);
                     }
                 }
 
@@ -411,6 +424,8 @@ Shader "Hidden/RadianceCascade/Blit"
                 color += SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv + offset.zy, 0);
                 color += SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv + offset.zw, 0);
                 color *= 0.25f;
+
+                color = SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv, 0);
 
                 // TODO: Bilateral Upsampling.
                 // float depth0 = SampleSceneDepth(floor(uv * _BlitTexture_TexelSize.zw) * _BlitTexture_TexelSize.xy);

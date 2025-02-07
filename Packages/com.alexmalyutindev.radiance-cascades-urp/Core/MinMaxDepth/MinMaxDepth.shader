@@ -90,9 +90,9 @@ Shader "Hidden/MinMaxDepth"
             {
                 int2 range = floor(_BlitTexture_TexelSize.zw / _TargetResolution.xy * 0.5f);
                 float2 minMaxDepth = float2(1.0f, 0.0f);
-                for (int x = -range.x; x < range.x; x++)
+                for (int x = -range.x; x <= range.x; x++)
                 {
-                    for (int y = -range.y; y < range.y; y++)
+                    for (int y = -range.y; y <= range.y; y++)
                     {
                         float2 uv = input.uv + float2(x, y) * _BlitTexture_TexelSize.xy;
                         float depth = SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv, 0).r;

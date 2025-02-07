@@ -305,16 +305,6 @@ float2x4 LoadUpperCascadeBilateral(
     );
 }
 
-float2 LinearEyeDepth(float2 depth, float4 zBufferParam)
-{
-    return 1.0f / (zBufferParam.z * depth + zBufferParam.w);
-}
-
-float4 LinearEyeDepth(float4 depth, float4 zBufferParam)
-{
-    return 1.0f / (zBufferParam.z * depth + zBufferParam.w);
-}
-
 float2x4 LoadUpperRadianceBilateral(int2 coords, float2 lowerProbeDepth)
 {
     const int2 upperCascadeSize = _ProbesCount * 0.5f;
@@ -350,15 +340,9 @@ float2x4 LoadUpperRadianceBilateral(int2 coords, float2 lowerProbeDepth)
     upperCascadeCoords += upperProbeLocalId;
     upperCascadeCoords.y += upperCascadeSize.y * 4;
 
-
     // NOTE: Chebyshev Variance
-    float2 depthMoments = SAMPLE_TEXTURE2D_LOD(
-        _VarianceDepth, sampler_PointClamp, float2(lowerProbeId) / float2(_ProbesCount), 0
-    ).rg;
+    float2 depthMoments = SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_PointClamp, float2(lowerProbeId) / float2(_ProbesCount), 0).rg;
     float smoothedDepth = depthMoments.x + sqrt(max(0.0, depthMoments.y - depthMoments.x * depthMoments.x));
-
-    float2 upperProbeMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, lowerProbeId, _CascadeLevel);
-    upperProbeMinMaxDepth = LinearEyeDepth(upperProbeMinMaxDepth, _ZBufferParams);
 
     float2 upperDepthA = LinearEyeDepth(LOAD_TEXTURE2D_LOD(_MinMaxDepth, upperProbeLocalId, _CascadeLevel + 1), _ZBufferParams);
     float2 upperDepthB = LinearEyeDepth(LOAD_TEXTURE2D_LOD(_MinMaxDepth, upperProbeLocalId + int2(1, 0), _CascadeLevel + 1), _ZBufferParams);
@@ -373,8 +357,8 @@ float2x4 LoadUpperRadianceBilateral(int2 coords, float2 lowerProbeDepth)
 
     float depthThickness = max(abs(weightedMinMaxDepth.x - weightedMinMaxDepth.y), 0.00001f);
 
-    float minProbeWeight = saturate((weightedMinMaxDepth[0] - upperProbeMinMaxDepth[0]) / depthThickness);
-    float maxProbeWeight = saturate((weightedMinMaxDepth[0] - upperProbeMinMaxDepth[1]) / depthThickness);
+    float minProbeWeight = saturate((weightedMinMaxDepth[0] - lowerProbeDepth[0]) / depthThickness);
+    float maxProbeWeight = saturate((weightedMinMaxDepth[0] - lowerProbeDepth[1]) / depthThickness);
 
     float2x4 radiance = 0.0f;
 
@@ -398,6 +382,12 @@ float2x4 LoadUpperRadianceBilateral(int2 coords, float2 lowerProbeDepth)
         radiance[1] += lerp(minProbeRadiance, maxProbeRadiance, maxProbeWeight) * 0.25f;
     }
 
+    // float4 a = LOAD_TEXTURE2D_LOD(_BlurredColor, upperProbeLocalId, _CascadeLevel + 3) * weights.x;
+    // float4 b = LOAD_TEXTURE2D_LOD(_BlurredColor, upperProbeLocalId, _CascadeLevel + 3) * weights.y;
+    // float4 c = LOAD_TEXTURE2D_LOD(_BlurredColor, upperProbeLocalId, _CascadeLevel + 3) * weights.z;
+    // float4 d = LOAD_TEXTURE2D_LOD(_BlurredColor, upperProbeLocalId, _CascadeLevel + 3) * weights.w;
+    // radiance[0] = a + b + c + d;
+    
     return radiance;
 }
 
@@ -460,7 +450,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
         float3 rayOriginVS = mul(_WorldToView, float4(rayOriginWS, 1)).xyz;
         float3 rayEndVS = mul(_WorldToView, float4(rayEndWS, 1)).xyz;
 
-        float stepsCount = 2 << _CascadeLevel + 1;
+        float stepsCount = 2 * (2 << _CascadeLevel + 1);
 
         float4 r = 0.0f;
 
@@ -501,7 +491,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
             if (test)
             {
                 // float distanceFade = 1.0f / (1.0f + range.x + i / (stepsCount - 1.0f) * (range.y - range.x));
-                float distanceFade = 1.0f / (1.0f + (range.x + (range.y - range.x) * traveledDistance) * _RayScale);
+                float distanceFade = 1.0f;// / (1.0f + (range.x + (range.y - range.x) * traveledDistance) * _RayScale);
                 float depthFade = saturate(1.0f / abs(linearDepth + rayVS.z));
                 radiance[probeDepthId].rgb = lighting.rgb * distanceFade * depthFade;
                 radiance[probeDepthId].a = 0.0f;
@@ -519,6 +509,8 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
         float4 upperRadiance = upperRadiances[0];
         radiance[0].rgb += upperRadiance.rgb * radiance[0].a;
         radiance[0].a *= upperRadiance.a;
+
+        // radiance[0] = upperRadiances[0];
 
         upperRadiance = upperRadiances[1];
         radiance[1].rgb += upperRadiance.rgb * radiance[1].a;

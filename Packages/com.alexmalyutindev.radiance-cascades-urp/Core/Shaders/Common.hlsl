@@ -124,3 +124,13 @@ float3 GetRay_DirectionFirst(float2 angleId, float cascadeLevel)
 
     return float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.y, sinCosTheta.x * sinCosPhi.x);
 }
+
+float2 LinearEyeDepth(float2 depth, float4 zBufferParam)
+{
+    return 1.0f / (zBufferParam.z * depth + zBufferParam.w);
+}
+
+float4 LinearEyeDepth(float4 depth, float4 zBufferParam)
+{
+    return 1.0f / (zBufferParam.z * depth + zBufferParam.w);
+}
