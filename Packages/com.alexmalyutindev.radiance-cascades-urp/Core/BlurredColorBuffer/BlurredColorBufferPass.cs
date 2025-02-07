@@ -26,9 +26,10 @@ namespace AlexMalyutinDev.RadianceCascades.BlurredColorBuffer
 
         public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
         {
+            // TODO: Use resolution from settings.
             var desc = new RenderTextureDescriptor(
-                cameraTextureDescriptor.width >> 1,
-                cameraTextureDescriptor.height >> 1
+                2048 / 4, // cameraTextureDescriptor.width >> 1,
+                1024 / 4 // cameraTextureDescriptor.height >> 1
             )
             {
                 colorFormat = cameraTextureDescriptor.colorFormat,
@@ -47,6 +48,7 @@ namespace AlexMalyutinDev.RadianceCascades.BlurredColorBuffer
 
             desc.width >>= 1;
             desc.height >>= 1;
+            desc.useMipMap = false;
             RenderingUtils.ReAllocateIfNeeded(
                 ref _tempBlurBuffer,
                 desc,
@@ -73,9 +75,13 @@ namespace AlexMalyutinDev.RadianceCascades.BlurredColorBuffer
 
                 cmd.SetRenderTarget(_radianceCascadesRenderingData.BlurredColorBuffer, 0, CubemapFace.Unknown);
                 cmd.SetGlobalInteger(InputMipLevel, 0);
-                cmd.SetGlobalVector(InputResolution, new Vector4(width, height));
+                cmd.SetGlobalVector(InputResolution, new Vector4(width, height) * 0.25f);
                 BlitUtils.BlitTexture(cmd, colorBuffer, _material, 0);
 
+                
+                width = _radianceCascadesRenderingData.BlurredColorBuffer.rt.width;
+                height = _radianceCascadesRenderingData.BlurredColorBuffer.rt.height;
+                
                 // NOTE: Can't render into MipLevel+1 and read from MipLevel of the same image on DX!
                 // Work around is to render blur in two taps:
                 // horizontal blur into _tempBlurBuffer, then vertical blur into BlurredColorBuffer

@@ -308,21 +308,31 @@ Shader "Hidden/RadianceCascade/Blit"
                 // float2 probeDepth = LinearEyeDepth(SAMPLE_TEXTURE2D_LOD(_MinMaxDepth, sampler_LinearClamp, input.texcoord, 0), _ZBufferParams);
                 // return float4(abs(probeDepth0 - depth), 0, 1);
 
-                float2 probeDepth = float2(
-                    min(probeDepth0.x, min(probeDepth1.x, min(probeDepth2.x, probeDepth3.x))), 
-                    max(probeDepth0.y, min(probeDepth1.y, min(probeDepth2.y, probeDepth3.y)))
+                float2 bilinearWeights = frac((_MinMaxDepth_TexelSize.zw - 1) * input.texcoord);
+                float4 weights = float4(bilinearWeights, 1.0f - bilinearWeights);
+                weights = float4(
+                    weights.z * weights.w,
+                    weights.x * weights.w,
+                    weights.z * weights.y,
+                    weights.x * weights.y
                 );
+                
+                float2 probeDepth =
+                    LinearEyeDepth(probeDepth0, _ZBufferParams) * weights.x +
+                    LinearEyeDepth(probeDepth1, _ZBufferParams) * weights.y +
+                    LinearEyeDepth(probeDepth2, _ZBufferParams) * weights.z +
+                    LinearEyeDepth(probeDepth3, _ZBufferParams) * weights.w; 
                 // return float4(abs(probeDepth - probeDepth0), 0, 1);
 
                 depth = LinearEyeDepth(depth, _ZBufferParams);
-                probeDepth = LinearEyeDepth(probeDepth, _ZBufferParams);
+                // probeDepth = LinearEyeDepth(probeDepth, _ZBufferParams);
 
                 float depthThikness = max(abs(probeDepth.x - probeDepth.y), 0.000001f);
                 float depthWeight = saturate((probeDepth.x - depth) / depthThikness);
 
                 // TODO: Fix uv, to trim cascade padding.
                 float2 uv = (input.texcoord * _BlitTexture_TexelSize.zw + 4.0f) / (_BlitTexture_TexelSize.zw + 8.0f);
-                uv = input.texcoord;
+                // uv = input.texcoord;
                 uv = (uv + float2(0.0f, 7.0f)) / 8.0f;
 
                 float2 horizontalOffset = float2(1.0f / 8.0f, 0.0f);
@@ -334,9 +344,6 @@ Shader "Hidden/RadianceCascade/Blit"
                 {
                     for (int y = 0; y < 4; y++)
                     {
-                        float3 direction = GetRay_DirectionFirst(float2(x, y), 0);
-                        float NdotL = dot(direction, normalWS);
-
                         float4 radianceMin = SAMPLE_TEXTURE2D_LOD(
                             _BlitTexture,
                             sampler_LinearClamp,
@@ -349,8 +356,11 @@ Shader "Hidden/RadianceCascade/Blit"
                             uv + horizontalOffset * (x + 4) - verticalOffset * y,
                             0
                         );
+        
+                        float3 direction = GetRay_DirectionFirst(float2(x, y), 0);
+                        float NdotL = dot(direction, normalWS);
                         float4 radiance = lerp(radianceMin, radianceMax, depthWeight);
-                        color += radiance; // * max(0, NdotL);
+                        color += radiance * max(0, NdotL);
                     }
                 }
 
@@ -418,12 +428,12 @@ Shader "Hidden/RadianceCascade/Blit"
             {
                 float2 uv = input.texcoord;
                 float4 color = 0;
-                float4 offset = 0.64f * float4(1.0f, 1.0f, -1.0f, -1.0f) * _BlitTexture_TexelSize.xyxy;
-                color += SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv + offset.xy, 0);
-                color += SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv + offset.xw, 0);
-                color += SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv + offset.zy, 0);
-                color += SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv + offset.zw, 0);
-                color *= 0.25f;
+                // float4 offset = 0.64f * float4(1.0f, 1.0f, -1.0f, -1.0f) * _BlitTexture_TexelSize.xyxy;
+                // color += SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv + offset.xy, 0);
+                // color += SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv + offset.xw, 0);
+                // color += SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv + offset.zy, 0);
+                // color += SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv + offset.zw, 0);
+                // color *= 0.25f;
 
                 color = SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv, 0);
 

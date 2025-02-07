@@ -9,7 +9,7 @@ namespace AlexMalyutinDev.RadianceCascades
         public VolumeParameter<RenderingType> RenderingType = new();
 
         [Header("Direction First")]
-        public ClampedFloatParameter RayScale = new ClampedFloatParameter(0.1f, 0.1f, 2.0f);
+        public ClampedFloatParameter RayScale = new ClampedFloatParameter(0.1f, 0.01f, 2.0f);
         public BoolParameter UseSH = new BoolParameter(false, BoolParameter.DisplayType.EnumPopup);
     }
 }

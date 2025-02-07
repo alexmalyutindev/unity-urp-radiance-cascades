@@ -442,7 +442,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
         // Raytracing
         float3 probeCenterWS = GetPositionWS(probeCenterUV, probeMinMaxDepth[probeDepthId]);
         float3 viewDirectionWS = normalize(probeCenterWS - _WorldSpaceCameraPos);
-        probeCenterWS -= viewDirectionWS * 0.02f;
+        probeCenterWS -= viewDirectionWS * _RayScale * 0.5f;
 
         float3 rayOriginWS = probeCenterWS + directionWS * _RayScale * range.x;
         float3 rayEndWS = probeCenterWS + directionWS * _RayScale * range.y;
@@ -471,6 +471,12 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
                 floor(ray.xy * _ProbesCount),
                 cascadeLevel
             ).xy;
+            // float2 minMaxDepth = SAMPLE_TEXTURE2D_LOD(
+            //     _MinMaxDepth,
+            //     sampler_PointClamp,
+            //     ray.xy,
+            //     cascadeLevel
+            // ).xy;
 
             // TODO: Use MinMax compare on lower mips and go up if collide.
             // TODO: Collide with Variance depth?
@@ -481,13 +487,13 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
                 _BlurredColor,
                 sampler_LinearClamp,
                 ray.xy,
-                cascadeLevel
+                cascadeLevel + 1
             );
             // TODO: Compare depth rays.
             // TODO: Accumulate radiance though ray pass with cone weights.
             // r += lighting * saturate(1.0f / abs(linearDepth + rayVS.z));
 
-            bool test = linearDepth < -rayVS.z && linearDepth > -(rayVS.z + 2.0f);
+            bool test = linearDepth < -rayVS.z && linearDepth > -(rayVS.z + 1.0f);
             if (test)
             {
                 // float distanceFade = 1.0f / (1.0f + range.x + i / (stepsCount - 1.0f) * (range.y - range.x));
