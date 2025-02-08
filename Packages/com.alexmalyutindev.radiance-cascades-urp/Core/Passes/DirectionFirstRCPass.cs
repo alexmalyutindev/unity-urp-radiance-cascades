@@ -51,7 +51,7 @@ namespace AlexMalyutinDev.RadianceCascades
             };
             RenderingUtils.ReAllocateIfNeeded(ref _radianceSH, desc, name: "RadianceSH");
 
-            desc = new RenderTextureDescriptor(cameraTextureDescriptor.width, cameraTextureDescriptor.height)
+            desc = new RenderTextureDescriptor(cameraTextureDescriptor.width / 2, cameraTextureDescriptor.height / 2)
             {
                 colorFormat = RenderTextureFormat.ARGBFloat,
                 sRGB = false,
