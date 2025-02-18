@@ -573,8 +573,8 @@ Shader "Hidden/RadianceCascade/Blit"
             {
                 float depth = Linear01Depth(SampleSceneDepth(uv), _ZBufferParams);
 
-                int2 shSize = _BlitTexture_TexelSize.zw * 0.5f;
-                int2 lowerCoords = uv * (shSize - 1);
+                int2 shSize = floor(_BlitTexture_TexelSize.zw * 0.5f);
+                int2 lowerCoords = floor(uv * (shSize - 1));
 
                 float2 depth0 = LOAD_TEXTURE2D_LOD(_MinMaxDepth, lowerCoords, 1).xy;
                 float2 depth1 = LOAD_TEXTURE2D_LOD(_MinMaxDepth, lowerCoords + int2(1, 0), 1).xy;
