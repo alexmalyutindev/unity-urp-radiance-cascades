@@ -231,43 +231,15 @@ float4 TraceRay(float3 rayOriginVS, float3 rayEndVS, int stepsCount, int2 range)
 
 float4 TraceDepthRays(float3 rayOriginVS, float3 rayEndVS, int stepsCount, int2 range)
 {
-    float4 radiance = float4(0.0f, 0.0f, 0.0f, 1.0f);
-    
-    float4x4 r[4] =
-    {
-        float4x4(
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f)
-        ),
-        float4x4(
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f)
-        ),
-        float4x4(
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f)
-        ),
-        float4x4(
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f)
-        ),
-    };
+    float4x4 radiances = float4x4(
+        float4(0.0f, 0.0f, 0.0f, 1.0f),
+        float4(0.0f, 0.0f, 0.0f, 1.0f),
+        float4(0.0f, 0.0f, 0.0f, 1.0f),
+        float4(0.0f, 0.0f, 0.0f, 1.0f)
+    );
 
-    float4x4 depthRays = 0.0f;
-    for (int i = 0; i < 4; i++)
-    {
-        float4 dr;
-        for (int j = 0; j < 4; j++) dr[j] = ((i * 4 + j) / 15.0f - 0.5f) * 2.0f;
-        depthRays[i] = dr;
-    }
+    float4 depthOffsets = 0.0f;
+    for (int i = 0; i < 4; i++) depthOffsets[i] = i / 3.0f - 0.5f;
 
     UNITY_LOOP
     for (int i = 0; i < stepsCount; i++)
@@ -283,27 +255,26 @@ float4 TraceDepthRays(float3 rayOriginVS, float3 rayEndVS, int stepsCount, int2 
 
         float2 depthMoments = SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, ray.xy, 0);
         float4 lighting = SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, ray.xy, _CascadeLevel + 1);
+        float depthNear = depthMoments.x;
+        float depthFar = depthMoments.x + 16.0f;
 
         float rayDepth = -rayVS.z;
         float linearDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
-        float4x4 transmittance = (rayDepth - linearDepth) + depthRays * i * _RayScale;
+        float4 transmittances = (rayDepth - linearDepth) + depthOffsets * i * _RayScale;
+        float depthSectorThickness = abs(depthFar - depthNear);
+        transmittances = smoothstep(linearDepth - depthNear, linearDepth - depthFar, -transmittances);
 
-        for (int depthRay = 0; depthRay < 16; depthRay++)
+        for (int depthRay = 0; depthRay < 4; depthRay++)
         {
-            float4 r0 = r[depthRay / 4][depthRay % 4];
-            float trans = transmittance[depthRay / 4][depthRay % 4];
-            r0.rgb += lighting.rgb * r0.w * saturate(1.0f - trans) * saturate(trans);
-            r0.w *= saturate(1.0f - trans);
-            r[depthRay / 4][depthRay % 4] = r0;
+            float4 radiance = radiances[depthRay];
+            float transmittance = transmittances[depthRay];
+            radiance.rgb += lighting.rgb * radiance.a * (1.0f - transmittance);
+            radiance.a *= transmittance;
+            radiances[depthRay] = radiance;
         }
     }
 
-    for (int depthRay = 0; depthRay < 4; depthRay++)
-    {
-        radiance += mul(float4(1.0f, 1.0f, 1.0f, 1.0f) / 16.0f, r[depthRay]);
-    }
-    
-    return radiance;
+    return (radiances[0] + radiances[1] + radiances[2] + radiances[3]) * 0.25f;
 }
 
 [numthreads(8, 4, 1)]
@@ -378,12 +349,12 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
         float radianceSectorSize = 0.25f / (1 << _CascadeLevel);
         float2x4 upperRadiances = LoadUpperRadianceBilateral(coords, probeMinMaxDepthLinear);
 
-        float4 upperRadiance = upperRadiances[0] * radianceSectorSize;
-        minMaxRadiance[0].rgb += upperRadiance.rgb * minMaxRadiance[0].a;
+        float4 upperRadiance = upperRadiances[0];
+        minMaxRadiance[0].rgb += upperRadiance.rgb * minMaxRadiance[0].a * radianceSectorSize;
         minMaxRadiance[0].a *= saturate(upperRadiance.a);
 
-        upperRadiance = upperRadiances[1] * radianceSectorSize;
-        minMaxRadiance[1].rgb += upperRadiance.rgb * minMaxRadiance[1].a;
+        upperRadiance = upperRadiances[1];
+        minMaxRadiance[1].rgb += upperRadiance.rgb * minMaxRadiance[1].a * radianceSectorSize;
         minMaxRadiance[1].a *= saturate(upperRadiance.a);
     }
 
