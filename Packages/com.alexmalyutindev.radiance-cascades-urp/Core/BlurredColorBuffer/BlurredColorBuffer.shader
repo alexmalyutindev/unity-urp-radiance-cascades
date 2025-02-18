@@ -57,7 +57,7 @@ Shader "Hidden/BlurredColorBuffer"
 
             half4 Fragment(Varyings input) : SV_TARGET
             {
-                float4 offset = 1.3f / float4(_InputResolution.xy, -_InputResolution.xy);
+                float4 offset = 1.0f / float4(_InputResolution.xy, -_InputResolution.xy);
 
                 half4 color = SampleColorBuffer(input.uv + offset.xy, _InputMipLevel);
                 color += SampleColorBuffer(input.uv + offset.xw, _InputMipLevel);
@@ -181,7 +181,7 @@ Shader "Hidden/BlurredColorBuffer"
                 half4 color = SampleColorBuffer(input.uv, _InputMipLevel);
                 color += SampleColorBuffer(input.uv + offset.xy, _InputMipLevel);
                 color += SampleColorBuffer(input.uv - offset.xy, _InputMipLevel);
-                color *= 0.3334f;
+                color *= 1.0f / 3.0f;
 
                 return color;
             }
@@ -231,7 +231,7 @@ Shader "Hidden/BlurredColorBuffer"
 
             inline half4 SampleColorBuffer(float2 uv, int lod)
             {
-                return SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv, lod);
+                return SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv, lod);
             }
 
             half4 Fragment(Varyings input) : SV_TARGET
