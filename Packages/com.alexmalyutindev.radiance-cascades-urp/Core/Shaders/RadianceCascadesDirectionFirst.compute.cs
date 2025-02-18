@@ -46,6 +46,8 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.MinMaxDepth, minMaxDepth);
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.BlurredColor, blurredColor);
 
+            cmd.SetComputeMatrixParam(_compute, "_InvProjectionMatrix", cameraData.GetProjectionMatrix().inverse);
+
             cmd.SetComputeVectorParam(_compute, ShaderIds.VarianceDepthSize, varianceDepthSizeTexel);
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.VarianceDepth, varianceDepth);
 
@@ -64,17 +66,19 @@ namespace AlexMalyutinDev.RadianceCascades
                     Mathf.FloorToInt(targetSizeTexel.x / (8 * 1 << cascadeLevel)),
                     Mathf.FloorToInt(targetSizeTexel.y / (8 * 1 << cascadeLevel))
                 );
+                probesCount.z = 1.0f / probesCount.x;
+                probesCount.w = 1.0f / probesCount.y;
                 cmd.SetComputeVectorParam(_compute, "_ProbesCount", probesCount);
 
                 cmd.SetComputeIntParam(_compute, "_CascadeLevel", cascadeLevel);
 
-                _compute.GetKernelThreadGroupSizes(kernel, out var x, out var y, out _);
+                _compute.GetKernelThreadGroupSizes(kernel, out var groupSizeX, out var groupSizeY, out _);
                 // TODO: Spawn only one cascade size Y groups, make all latitudinal ray in one thread?
                 cmd.DispatchCompute(
                     _compute,
                     kernel,
-                    Mathf.CeilToInt(targetSizeTexel.x / 2 / x),
-                    Mathf.CeilToInt(targetSizeTexel.y / (y * (1 << cascadeLevel))),
+                    Mathf.CeilToInt(targetSizeTexel.x / (2 * groupSizeX)),
+                    Mathf.CeilToInt(targetSizeTexel.y / (groupSizeY * (8 << cascadeLevel))),
                     1
                 );
             }

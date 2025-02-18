@@ -62,10 +62,9 @@ namespace AlexMalyutinDev.RadianceCascades
                 name = "VarianceDepth",
                 colorFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.RGFloat, false),
             };
-
             passData.VarianceDepth = renderGraph.CreateTexture(desc);
+            builder.UseTexture(passData.VarianceDepth, AccessFlags.Write);
             varianceDepthData.VarianceDepth = passData.VarianceDepth;
-            builder.UseTexture(passData.VarianceDepth, AccessFlags.ReadWrite);
 
             desc.name = "Temp";
             passData.TempBuffer = builder.CreateTransientTexture(desc);
@@ -82,6 +81,24 @@ namespace AlexMalyutinDev.RadianceCascades
 
                 cmd.SetRenderTarget(data.VarianceDepth);
                 BlitUtils.BlitTexture(cmd, data.TempBuffer, data.Material, BlurHorizontalPass);
+                
+                // TODO: Add mipmaps!
+                // int width = _radianceCascadesRenderingData.VarianceDepth.rt.width;
+                // int height = _radianceCascadesRenderingData.VarianceDepth.rt.height;
+                // for (int mipLevel = 0; mipLevel < _radianceCascadesRenderingData.VarianceDepth.rt.mipmapCount; mipLevel++)
+                // {
+                //     cmd.SetGlobalInteger("_InputMipLevel", mipLevel);
+                //     cmd.SetGlobalVector("_InputTexelSize", new Vector4(1.0f / width, 1.0f / height, width, width));
+                //
+                //     cmd.SetRenderTarget(_tempBuffer, mipLevel);
+                //     BlitUtils.BlitTexture(cmd, _radianceCascadesRenderingData.VarianceDepth, _material, BlurVerticalPass);
+                //
+                //     cmd.SetRenderTarget(_radianceCascadesRenderingData.VarianceDepth, mipLevel);
+                //     BlitUtils.BlitTexture(cmd, _tempBuffer, _material, BlurHorizontalPass);
+                //
+                //     width /= 2;
+                //     height /= 2;
+                // }
             });
         }
     }

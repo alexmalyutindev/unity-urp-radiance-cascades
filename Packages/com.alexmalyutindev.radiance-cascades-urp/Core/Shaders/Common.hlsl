@@ -2,6 +2,7 @@
 
 float4 _ColorTexture_TexelSize;
 float4 _DepthTexture_TexelSize;
+// { width, height, 1 / width, 1 / height }
 float4 _CascadeBufferSize;
 
 float4x4 _WorldToView;
@@ -137,8 +138,8 @@ float3 GetRayDirectionDFWS(float2 angleId, float cascadeLevel)
     sincos(phi, sinCosPhi.x, sinCosPhi.y);
     sincos(theta, sinCosTheta.x, sinCosTheta.y);
 
-    float3 ray = float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.y, sinCosTheta.x * sinCosPhi.x);
-    return mul(_ViewToWorld, float4(ray.xzy, 0)).xyz;
+    float3 ray = float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.x * sinCosPhi.x, sinCosTheta.y);
+    return mul(_ViewToWorld, float4(ray, 0)).xyz;
 }
 
 float3 GetRayDirectionDFVS(float2 angleId, float cascadeLevel)
@@ -157,8 +158,8 @@ float3 GetRayDirectionDFVS(float2 angleId, float cascadeLevel)
     sincos(phi, sinCosPhi.x, sinCosPhi.y);
     sincos(theta, sinCosTheta.x, sinCosTheta.y);
 
-    float3 ray = float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.y, sinCosTheta.x * sinCosPhi.x);
-    return ray.xzy;
+    float3 ray = float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.x * sinCosPhi.x, sinCosTheta.y);
+    return ray;
 }
 
 float2 LinearEyeDepth(float2 depth, float4 zBufferParam)

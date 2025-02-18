@@ -5,15 +5,19 @@
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/SphericalHarmonics.hlsl"
 
 // #define SIMPLE_RAYCASTING
+#define SMALL_FLT 1e-6
 
 // Input
 float _RayScale;
 int _CascadeLevel;
 float2 _ProbesCount;
 float2 _VarianceDepthSize;
+float4x4 _InvProjectionMatrix;
 
 Texture2D<float2> _MinMaxDepth;
 Texture2D<float> _SmoothedDepth;
+
+SAMPLER(sampler_VarianceDepth);
 Texture2D<float2> _VarianceDepth;
 Texture2D<float4> _BlurredColor;
 
@@ -76,7 +80,7 @@ float3 TransformWorldToScreenSpace(float3 positionWS)
     return positionCS.xyz;
 }
 
-inline float3 TransformViewToScreenUV(float3 positionVS)
+inline float2 TransformViewToScreenUV(float3 positionVS)
 {
     float4 positionCS = mul(_ViewToHClip, float4(positionVS, 1));
     positionCS.xyz /= positionCS.w;
@@ -143,11 +147,6 @@ float2x4 LoadUpperRadianceBilateral(int2 coords, float2 lowerProbeDepth)
     upperCascadeCoords += upperProbeLocalId;
     upperCascadeCoords.y += upperCascadeSize.y * 4;
 
-    // NOTE: Chebyshev Variance
-    float2 uv = float2(lowerProbeId) / float2(_ProbesCount);
-    float2 depthMoments = SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_PointClamp, uv, 0).rg;
-    float smoothedDepth = depthMoments.x + sqrt(max(0.0, depthMoments.y - depthMoments.x * depthMoments.x));
-
     int depthLevel = _CascadeLevel + 3;
     static const int2 neighbours[4] = {int2(0, 0), int2(1, 0), int2(0, 1), int2(1, 1)};
     float2 weightedMinMaxDepth = 0.0f;
@@ -156,11 +155,10 @@ float2x4 LoadUpperRadianceBilateral(int2 coords, float2 lowerProbeDepth)
         float2 minMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, upperProbeLocalId + neighbours[i], depthLevel);
         weightedMinMaxDepth += minMaxDepth * weights[i];
     }
-    weightedMinMaxDepth = LinearEyeDepth(weightedMinMaxDepth, _ZBufferParams);
-    float depthThickness = max(weightedMinMaxDepth.x - weightedMinMaxDepth.y, 0.0001f);
+    float depthThickness = max(abs(weightedMinMaxDepth.y - weightedMinMaxDepth.x), 0.000001f);
 
-    float minProbeWeight = saturate((weightedMinMaxDepth[0] - lowerProbeDepth[0]) / depthThickness);
-    float maxProbeWeight = saturate((weightedMinMaxDepth[0] - lowerProbeDepth[1]) / depthThickness);
+    float minProbeWeight = saturate(abs(weightedMinMaxDepth.y - lowerProbeDepth.x) / depthThickness);
+    float maxProbeWeight = saturate(abs(weightedMinMaxDepth.y - lowerProbeDepth.y) / depthThickness);
 
     float2x4 radiance = 0.0f;
 
@@ -178,140 +176,31 @@ float2x4 LoadUpperRadianceBilateral(int2 coords, float2 lowerProbeDepth)
     for (int rayI = 0; rayI < 4; rayI++)
     {
         int2 off = neighbourRaysOffset[rayI];
-        minProbeRadiance += GetRadianceWeighted(upperCascadeCoords + off, weights);
-        maxProbeRadiance += GetRadianceWeighted(upperCascadeCoords + off + int2(halfCascadeBufferSizeX, 0), weights);
+        minProbeRadiance += GetRadianceWeighted(upperCascadeCoords + off, weights) * 0.25f;
+        maxProbeRadiance += GetRadianceWeighted(upperCascadeCoords + off + int2(halfCascadeBufferSizeX, 0), weights) * 0.25f;
     }
-    radiance[0] = lerp(minProbeRadiance, maxProbeRadiance, minProbeWeight);
-    radiance[1] = lerp(minProbeRadiance, maxProbeRadiance, maxProbeWeight);
+    radiance[0] = lerp(maxProbeRadiance, minProbeRadiance, minProbeWeight);
+    radiance[1] = lerp(maxProbeRadiance, minProbeRadiance, maxProbeWeight);
 
     return radiance;
 }
 
-float4 TraceRay(float3 rayOriginVS, float3 rayEndVS, int stepsCount, int2 range)
+float2 GetDepthMoments(float2 uv)
 {
-    float4 radiance = float4(0.0f, 0.0f, 0.0f, 1.0f);
-    UNITY_LOOP
-    for (int i = 0; i < stepsCount; i++)
-    {
-        float traveledDistance = i / (stepsCount - 1.0f);
-        // TODO: Use DDA for ray marching.
-        float3 rayVS = lerp(rayOriginVS, rayEndVS, traveledDistance);
-        float3 ray = TransformViewToScreenUV(rayVS);
-        if (any(ray.xy < 0 || 1 < ray.xy))
-        {
-            break;
-        }
-
-        float rayDepth = -rayVS.z;
-
-        float2 depthMoments = SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, ray.xy, 0);
-        float linearDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
-
-        float4 lighting = SAMPLE_TEXTURE2D_LOD(
-            _BlurredColor,
-            sampler_LinearClamp,
-            ray.xy,
-            _CascadeLevel
-        );
-
-        float depthFade = saturate(1.0f / (1.0f + (linearDepth - rayDepth) * (linearDepth - rayDepth)));
-        float distanceFade = 1.0f / (1.0f + (range.x + (range.y - range.x) * traveledDistance) * _RayScale);
-
-        bool test = linearDepth < rayDepth && linearDepth + 3.0f > rayDepth;
-        if (test)
-        {
-            radiance.rgb = lighting.rgb * depthFade;
-            radiance.a = 0.0f;
-            break;
-        }
-    }
-
-    return radiance;
+    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_VarianceDepth, uv, _CascadeLevel + 2).xy;
 }
-
-float4 TraceDepthRays(float3 rayOriginVS, float3 rayEndVS, int stepsCount, int2 range)
+float3 GetSceneLighting(float2 uv)
 {
-    float4 radiance = float4(0.0f, 0.0f, 0.0f, 1.0f);
-    
-    float4x4 r[4] =
-    {
-        float4x4(
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f)
-        ),
-        float4x4(
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f)
-        ),
-        float4x4(
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f)
-        ),
-        float4x4(
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f),
-            float4(0.0f, 0.0f, 0.0f, 1.0f)
-        ),
-    };
-
-    float4x4 depthRays = 0.0f;
-    for (int i = 0; i < 4; i++)
-    {
-        float4 dr;
-        for (int j = 0; j < 4; j++) dr[j] = ((i * 4 + j) / 15.0f - 0.5f) * 2.0f;
-        depthRays[i] = dr;
-    }
-
-    UNITY_LOOP
-    for (int i = 0; i < stepsCount; i++)
-    {
-        float traveledDistance = i / (stepsCount - 1.0f);
-        // TODO: Use DDA for ray marching.
-        float3 rayVS = lerp(rayOriginVS, rayEndVS, traveledDistance);
-        float3 ray = TransformViewToScreenUV(rayVS);
-        if (any(ray.xy < 0 || 1 < ray.xy))
-        {
-            break;
-        }
-
-        float2 depthMoments = SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, ray.xy, 0);
-        float4 lighting = SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, ray.xy, _CascadeLevel + 1);
-
-        float rayDepth = -rayVS.z;
-        float linearDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
-        float4x4 transmittance = (rayDepth - linearDepth) + depthRays * i * _RayScale;
-
-        for (int depthRay = 0; depthRay < 16; depthRay++)
-        {
-            float4 r0 = r[depthRay / 4][depthRay % 4];
-            float trans = transmittance[depthRay / 4][depthRay % 4];
-            r0.rgb += lighting.rgb * r0.w * saturate(1.0f - trans) * saturate(trans);
-            r0.w *= saturate(1.0f - trans);
-            r[depthRay / 4][depthRay % 4] = r0;
-        }
-    }
-
-    for (int depthRay = 0; depthRay < 4; depthRay++)
-    {
-        radiance += mul(float4(1.0f, 1.0f, 1.0f, 1.0f) / 16.0f, r[depthRay]);
-    }
-    
-    return radiance;
+    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, uv, _CascadeLevel + 1).rgb;
 }
+#include "Raytracing.hlsl"
 
 [numthreads(8, 4, 1)]
 void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 {
     int2 coords = int2(id.xy);
     int2 targetCoords = int2(id.xy);
-    targetCoords.y += _ProbesCount.y * 4;
+    targetCoords.y += _ProbesCount.y * 7;
 
     if (coords.x * 2 >= _CascadeBufferSize.x || coords.y >= _ProbesCount.y * 4)
     {
@@ -320,75 +209,116 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
     // BUG: Fix probe probeCenterUV?
     int2 probeCenterCoord = coords % _ProbesCount;
-    float2 probeCenterUV = float2(probeCenterCoord + 1.0f) / (_ProbesCount + 1.0f);
+    float2 probeCenterUV = float2(probeCenterCoord + 0.5f) / _ProbesCount;
 
     const float cascadeLevel = _CascadeLevel;
-    const int depthLevel = _CascadeLevel + 2;
+    float2 probeMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, probeCenterCoord, _CascadeLevel + 2).xy;
+    // Clipping
+    // if (probeMinMaxDepth.y > _ProjectionParams.z * 0.95f)
+    // {
+    //     for (int depthRayId = 0; depthRayId < 4; depthRayId++)
+    //     {
+    //         int2 finalCoords = targetCoords;
+    //         finalCoords.y -= _ProbesCount.y * depthRayId;
+    //         _RadianceCascades[finalCoords] = float4(0,0,0,1); // MinDepthProb
+    //         finalCoords.x += _CascadeBufferSize.x / 2;
+    //         _RadianceCascades[finalCoords] = float4(0,0,0,1); // MaxDepthProbe
+    //     }
+    //     return;
+    // }
 
-    float3 directionVS;
+    float2 rayDirectionUV;
     {
         // TODO: Fix hardcoded values.
         float cascadeFactor = pow(2.0f, cascadeLevel);
-        float projRays = 8.0f * cascadeFactor;
-        float depthRays = floor(4.0f * cascadeFactor * 2.0f);
-        float2 angleId;
-        angleId.x = floor(coords.x * projRays * _CascadeBufferSize.z);
-        angleId.y = fmod(floor((1.0f - (coords.y + 1) * _CascadeBufferSize.w) * depthRays), 4);
+        float radialRaysCount = 8.0f * cascadeFactor;
+        float angleId = floor(coords.x * radialRaysCount * _CascadeBufferSize.z);
 
-        directionVS = GetRayDirectionDFVS(angleId, cascadeLevel);
+        float deltaPhi = TWO_PI * pow(0.5f, cascadeLevel) * 0.25f;
+        sincos((angleId.x + 0.5f) * deltaPhi, rayDirectionUV.y, rayDirectionUV.x);
     }
 
-    float2 probeMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, probeCenterCoord, depthLevel).xy;
-    float2 probeMinMaxDepthLinear = LinearEyeDepth(probeMinMaxDepth, _ZBufferParams);
-    float4 minMaxRadiance[2];
-    minMaxRadiance[0] = float4(0.0f, 0.0f, 0.0f, 1.0f);
-    minMaxRadiance[1] = float4(0.0f, 0.0f, 0.0f, 1.0f);
-    int2 range = Ranges2[_CascadeLevel];
+    float4x4 minProbeRadiance;
+    float4x4 maxProbeRadiance;
 
-    // TODO: Make two rays simultaneously!
-    for (int probeDepthId = 0; probeDepthId < 2; probeDepthId++)
-    {
-        if (probeMinMaxDepthLinear[probeDepthId] > 500.0f) // Probe is too far, skip it.
-        {
-            // NOTE: Skip probe that placed on skybox.
-            minMaxRadiance[probeDepthId] = float4(0.0f, 0.0f, 0.0f, 1.0f);
-            continue;
-        }
+    int factor = 2;
+    int2 range = int2(0, _CascadeLevel * factor);
 
-        // Raytracing
-        // TODO: Optimize math.
-        float3 probeCenterWS = GetPositionWS(probeCenterUV, probeMinMaxDepth[probeDepthId]);
-        float3 probeCenterVS = mul(_WorldToView, float4(probeCenterWS, 1)).xyz;
-        float3 rayOriginVS = probeCenterVS + range.x * _RayScale * directionVS;
-        float3 rayEndVS = probeCenterVS + range.y * _RayScale * directionVS;
+    float4 outputSizeTexel = float4(_ProbesCount / 2.0f, 1.0f / _ProbesCount * 2.0f);
+    float cascadeExponent = 0.25f * (1u << _CascadeLevel);
+    ComputeProbeRadiance(
+        probeMinMaxDepth,
+        probeCenterUV,
+        rayDirectionUV,
+        range,
+        outputSizeTexel,
+        cascadeExponent,
+        minProbeRadiance,
+        maxProbeRadiance
+    );
 
-        // TODO: Calculate proper ray steps count.
-        // float stepsCount = clamp(length(rayOriginCS.xy - rayEndCS.xy), 1, 200);
-        int stepsCount = 4 * (range.y - range.x);
+/// TEST
+#if 0
 
-        #if defined(SIMPLE_RAYCASTING)
-        minMaxRadiance[probeDepthId] = TraceRay(rayOriginVS, rayEndVS, stepsCount, range);
-        #else
-        minMaxRadiance[probeDepthId] = TraceDepthRays(rayOriginVS, rayEndVS, stepsCount, range);
-        #endif
-    }
+    float3 probeCenterVS = ComputeViewSpacePosition(probeCenterUV, UNITY_RAW_FAR_CLIP_VALUE, _InvProjectionMatrix);
+    probeCenterVS = probeCenterVS / probeCenterVS.z * probeMinMaxDepth.x;
+
+    float2 rayUV = probeCenterUV + 5 * rayDirectionUV / _ProbesCount;
+    float3 viewDirectionVS = ComputeViewSpacePosition(rayUV, UNITY_RAW_FAR_CLIP_VALUE, _InvProjectionMatrix);
+    viewDirectionVS = viewDirectionVS / viewDirectionVS.z;
+
+    float3 probeNormalVS = normalize(viewDirectionVS);
+    probeNormalVS = normalize(probeCenterVS);
+
+    float depthThickness = 50.0f;
+    float2 depthMoments = GetDepthMoments(rayUV);
+    float meanDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
+
+    float3 occluderNearVS = viewDirectionVS * depthMoments.x;
+    float3 occluderFarVS = viewDirectionVS * (depthMoments.x + depthThickness);
+    float3 occluderMeanVS = viewDirectionVS * meanDepth;
+
+    float nearAngle = dot(probeNormalVS, normalize(occluderNearVS - probeCenterVS)) * 0.5f + 0.5f;
+    float farAngle = dot(probeNormalVS, normalize(occluderFarVS - probeCenterVS)) * 0.5f + 0.5f;
+    float meanAngle = dot(probeNormalVS, normalize(occluderMeanVS - probeCenterVS)) * 0.5f + 0.5f;
+
+    // _RadianceCascades[targetCoords] = float4(probeCenterVS.xy * probeMinMaxDepth.x, 0, 1);
+    // _RadianceCascades[targetCoords] = float4(rayDirectionUV.xy, 0, 1);
+    _RadianceCascades[targetCoords] = float4(abs(farAngle - nearAngle).xxx, 1);
+    return;
+
+#endif
 
     if (_CascadeLevel < 5)
     {
-        float radianceSectorSize = 0.25f / (1 << _CascadeLevel);
-        float2x4 upperRadiances = LoadUpperRadianceBilateral(coords, probeMinMaxDepthLinear);
+        UNITY_UNROLL
+        for (int depthRayId = 0; depthRayId < 4; depthRayId++)
+        {
+            // TODO: Merge Depth Rays!
+            int2 coords0 = coords + int2(0, _ProbesCount.y * (3 - depthRayId));
+            float2x4 upperRadiances = LoadUpperRadianceBilateral(coords0, probeMinMaxDepth);
 
-        float4 upperRadiance = upperRadiances[0] * radianceSectorSize;
-        minMaxRadiance[0].rgb += upperRadiance.rgb * minMaxRadiance[0].a;
-        minMaxRadiance[0].a *= saturate(upperRadiance.a);
+            float4 upperRadiance = upperRadiances[0];
+            minProbeRadiance[depthRayId].rgb += upperRadiance.rgb * saturate(minProbeRadiance[depthRayId].a);
+            minProbeRadiance[depthRayId].a *= saturate(upperRadiance.a);
 
-        upperRadiance = upperRadiances[1] * radianceSectorSize;
-        minMaxRadiance[1].rgb += upperRadiance.rgb * minMaxRadiance[1].a;
-        minMaxRadiance[1].a *= saturate(upperRadiance.a);
+            upperRadiance = upperRadiances[1];
+            maxProbeRadiance[depthRayId].rgb += upperRadiance.rgb * saturate(maxProbeRadiance[depthRayId].a);
+            maxProbeRadiance[depthRayId].a *= saturate(upperRadiance.a);
+
+            // minProbeRadiance[depthRayId] = upperRadiances[0];
+            // maxProbeRadiance[depthRayId] = upperRadiances[1];
+        }
     }
 
-    _RadianceCascades[targetCoords] = minMaxRadiance[0]; // MinDepthProb
-    _RadianceCascades[targetCoords + int2(_CascadeBufferSize.x / 2, 0)] = minMaxRadiance[1]; // MaxDepthProbe
+    for (int depthRayId = 0; depthRayId < 4; depthRayId++)
+    {
+        int2 finalCoords = targetCoords;
+        finalCoords.y -= _ProbesCount.y * depthRayId;
+        _RadianceCascades[finalCoords] = minProbeRadiance[depthRayId]; // MinDepthProb
+        finalCoords.x += _CascadeBufferSize.x / 2;
+        _RadianceCascades[finalCoords] = maxProbeRadiance[depthRayId]; // MaxDepthProbe
+    }
 }
 
 
@@ -415,17 +345,17 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
     );
 
     float2 weightedMinMaxDepth = 0.0f;
-    for (int i = 0; i < 4; i++)
+    for (uint i = 0; i < 4; i++)
     {
         int2 offset = int2(i % 2, i / 2);
         float2 minMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, upperProbeLocalId + offset, 2);
         weightedMinMaxDepth += minMaxDepth * weights[i];
     }
-    weightedMinMaxDepth = LinearEyeDepth(weightedMinMaxDepth, _ZBufferParams);
 
-    float2 minMaxDepth = LinearEyeDepth(LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords, 1).xy, _ZBufferParams);
-    float depthThickness = max(weightedMinMaxDepth.x - weightedMinMaxDepth.y, 0.001f);
-    float depthOffset = saturate((weightedMinMaxDepth.x - minMaxDepth.x) / depthThickness);
+    float2 minMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords, 1).xy;
+    float midDepth = dot(minMaxDepth, 0.5f);
+    float depthThickness = max(abs(weightedMinMaxDepth.x - weightedMinMaxDepth.y), 0.0000001f);
+    float depthWeight = saturate((weightedMinMaxDepth.y - midDepth) / depthThickness);
 
     float4 sh0 = 0.0f;
     float4 sh1 = 0.0f;
@@ -454,9 +384,9 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
             radianceMax += _RadianceCascades[upperCoords + int2(0, 1)] * weights.z;
             radianceMax += _RadianceCascades[upperCoords + int2(1, 1)] * weights.w;
 
-            float4 radiance = lerp(radianceMin, radianceMax, depthOffset);
+            float4 radiance = lerp(radianceMax, radianceMin, depthWeight);
 
-            float3 direction = GetRayDirectionDFWS(int2(x, y), 0);
+            float3 direction = normalize(GetRayDirectionDFWS(int2(x, y), 0));
 
             sh0 += radiance * kSHBasis0;
             sh1 += radiance * direction.x * kSHBasis1;
