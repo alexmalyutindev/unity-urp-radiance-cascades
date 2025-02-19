@@ -255,21 +255,22 @@ float4 TraceDepthRays(float3 rayOriginVS, float3 rayEndVS, int stepsCount, int2 
 
         float2 depthMoments = SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, ray.xy, 0);
         float4 lighting = SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, ray.xy, _CascadeLevel + 1);
+
         float depthNear = depthMoments.x;
-        float depthFar = depthMoments.x + 16.0f;
+        float depthFar = depthMoments.x + 1.0f;
 
         float rayDepth = -rayVS.z;
         float linearDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
-        float4 transmittances = (rayDepth - linearDepth) + depthOffsets * i * _RayScale;
+        float4 intersectionDepths = (rayDepth - linearDepth) + depthOffsets * i * _RayScale;
         float depthSectorThickness = abs(depthFar - depthNear);
-        transmittances = smoothstep(linearDepth - depthNear, linearDepth - depthFar, -transmittances);
+        float4 transmittances = 1.0f - smoothstep(linearDepth - depthNear, linearDepth - depthFar, -intersectionDepths);
 
         for (int depthRay = 0; depthRay < 4; depthRay++)
         {
             float4 radiance = radiances[depthRay];
             float transmittance = transmittances[depthRay];
-            radiance.rgb += lighting.rgb * radiance.a * (1.0f - transmittance);
-            radiance.a *= transmittance;
+            radiance.rgb += lighting.rgb * radiance.a * saturate(1.0f - transmittance);
+            radiance.a *= saturate(transmittance);
             radiances[depthRay] = radiance;
         }
     }
@@ -291,7 +292,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
     // BUG: Fix probe probeCenterUV?
     int2 probeCenterCoord = coords % _ProbesCount;
-    float2 probeCenterUV = float2(probeCenterCoord + 1.0f) / (_ProbesCount + 1.0f);
+    float2 probeCenterUV = float2(probeCenterCoord + 0.5f) / _ProbesCount;
 
     const float cascadeLevel = _CascadeLevel;
     const int depthLevel = _CascadeLevel + 2;
