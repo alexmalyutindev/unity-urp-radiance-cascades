@@ -5,6 +5,7 @@
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/SphericalHarmonics.hlsl"
 
 // #define SIMPLE_RAYCASTING
+#define SMALL_FLT 1e-6
 
 // Input
 float _RayScale;
@@ -231,15 +232,13 @@ float4 TraceRay(float3 rayOriginVS, float3 rayEndVS, int stepsCount, int2 range)
 
 float4 TraceDepthRays(float3 rayOriginVS, float3 rayEndVS, int stepsCount, int2 range)
 {
-    float4x4 radiances = float4x4(
-        float4(0.0f, 0.0f, 0.0f, 1.0f),
-        float4(0.0f, 0.0f, 0.0f, 1.0f),
-        float4(0.0f, 0.0f, 0.0f, 1.0f),
-        float4(0.0f, 0.0f, 0.0f, 1.0f)
-    );
+    float cascadeExponent = 1u << _CascadeLevel;
 
     float4 depthOffsets = 0.0f;
-    for (int i = 0; i < 4; i++) depthOffsets[i] = (i / 3.0f - 0.5f) * 2.0f;
+    for (int i = 0; i < 4; i++) depthOffsets[i] = (i / 3.0f - 0.5f) * 1.0f;
+
+    float4 radiance = float4(0.0f, 0.0f, 0.0f, 1.0f);
+    float4 transmittances = 1.0f;
 
     UNITY_LOOP
     for (int i = 0; i < stepsCount; i++)
@@ -253,52 +252,52 @@ float4 TraceDepthRays(float3 rayOriginVS, float3 rayEndVS, int stepsCount, int2 
             break;
         }
 
-        float rayDepth = -rayVS.z;
+        float probeDepth = -rayVS.z;
 
         float2 depthMoments = SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, ray.xy, 0);
         float4 lighting = SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, ray.xy, _CascadeLevel + 1);
-
+        lighting.a = -1.0f;
+        
         float meanDepth = depthMoments.x;
         float depthVariance = max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x);
         float linearDepth = depthMoments.x + depthVariance;
 
+        float depthOffsetNear = saturate(meanDepth - probeDepth);
+        float depthOffsetFar = saturate(meanDepth + 10.0f - probeDepth);
 
-        float depthFar = depthMoments.x + 10.0f;
-        float depthSectorThickness = abs(depthFar - meanDepth);
-        float offsetToNear = meanDepth - rayDepth;
-        float offsetToFar = depthFar - rayDepth;
-        float d = offsetToNear - (linearDepth - rayDepth);
+        float depthDistance = sqrt(3) * (depthOffsetNear - saturate((linearDepth - probeDepth) * 0.5f + 0.5f));
+        float halfDepthThickness = 0.5f * (depthOffsetNear - depthOffsetFar);
+        float depthMidpoint = 0.5f * (depthOffsetFar + depthOffsetNear);
 
-        float midDepth = (meanDepth + depthFar) * 0.5f;
-        float halfDepth = (meanDepth - depthFar) * 0.5f;
+        float thicknessDifference = abs(halfDepthThickness - depthDistance);
+        float depthRange = max(SMALL_FLT, halfDepthThickness + depthDistance - thicknessDifference);
+        float varianceRatio = min(1.0f, halfDepthThickness / max(SMALL_FLT, depthDistance));
 
-        float4 intersectionDepths = (rayDepth - linearDepth) + depthOffsets * i * _RayScale;
-        float4 transmittances = 1.0f - smoothstep(linearDepth - meanDepth, linearDepth - depthFar, -intersectionDepths);
+        float totalVariance = thicknessDifference + depthRange;
+        float clampedDepthDifference = min(abs(depthMidpoint), totalVariance);
+        float adjustedDepthDifference = max(0.0f, clampedDepthDifference - thicknessDifference);
 
-#define SMALL_FLT 1e-6
-        
-        float4 raysDepth = rayDepth + depthOffsets * i * _RayScale;
-        float4 depthDifference = abs(raysDepth - meanDepth);
 
-        float4 confidence = exp(-depthDifference * depthDifference / (2.0f * depthVariance + 1e-6));
-        float4 depthBlendFactor = confidence * min(1.0f, depthVariance / max(SMALL_FLT, depthDifference));
-
-        transmittances = pow(saturate(1.0f - (depthBlendFactor * 16.0f)), 4.0f);
-
-        float varianceThreshold = sqrt(depthVariance) * 2.0f;
-        transmittances = lerp(transmittances, 1.0f, depthDifference > varianceThreshold);
-        
+        float depthIntersectionFactorPrev = (0.0f > depthMidpoint ? 1.0f : -1.0f) * varianceRatio * (clampedDepthDifference + adjustedDepthDifference * adjustedDepthDifference * -0.5f / depthRange);
         for (int depthRay = 0; depthRay < 4; depthRay++)
         {
-            float4 radiance = radiances[depthRay];
-            float transmittance = transmittances[depthRay];
-            radiance.rgb += lighting.rgb * radiance.a * (1.0f - transmittance);
-            radiance.a *= transmittance;
-            radiances[depthRay] = radiance;
+            float offset = (depthRay + 1.0f) * 0.125f;
+            float depthBias = min(abs(offset - depthMidpoint), totalVariance);
+            float adjustedDepthBias = max(0.0f, depthBias - thicknessDifference);
+            float depthIntersectionFactor = (offset > depthMidpoint ? 1.0f : -1.0f) * varianceRatio * (depthBias - 0.5f * adjustedDepthBias * adjustedDepthBias / depthRange);
+
+            float transmittance = pow(
+                clamp(1.0 - (depthIntersectionFactor - depthIntersectionFactorPrev) * 16.0f, 0.0f, 1.0f),
+                cascadeExponent
+            );
+            depthIntersectionFactorPrev = depthIntersectionFactor;
+
+            radiance += lighting * transmittances[depthRay] * (1.0f - transmittance);
+            transmittances[depthRay] *= transmittance;
         }
     }
 
-    return (radiances[0] + radiances[1] + radiances[2] + radiances[3]) * 0.25f;
+    return float4(radiance.rgb, radiance.a);
 }
 
 [numthreads(8, 4, 1)]
@@ -359,7 +358,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
         // TODO: Calculate proper ray steps count.
         // float stepsCount = clamp(length(rayOriginCS.xy - rayEndCS.xy), 1, 200);
-        int stepsCount = 2 * (range.y - range.x);
+        int stepsCount = 6 * (range.y - range.x);
 
         #if defined(SIMPLE_RAYCASTING)
         minMaxRadiance[probeDepthId] = TraceRay(rayOriginVS, rayEndVS, stepsCount, range);

@@ -231,7 +231,7 @@ Shader "Hidden/BlurredColorBuffer"
 
             inline half4 SampleColorBuffer(float2 uv, int lod)
             {
-                return SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv, lod);
+                return SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv, lod);
             }
 
             half4 Fragment(Varyings input) : SV_TARGET
