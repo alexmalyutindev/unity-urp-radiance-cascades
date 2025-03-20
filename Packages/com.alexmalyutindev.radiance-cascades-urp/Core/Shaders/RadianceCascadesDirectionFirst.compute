@@ -243,7 +243,7 @@ float4 TraceDepthRays(float3 rayOriginVS, float3 rayEndVS, int stepsCount, int2 
     UNITY_LOOP
     for (int i = 0; i < stepsCount; i++)
     {
-        float traveledDistance = i / (stepsCount - 1.0f);
+        float traveledDistance = i / (stepsCount - 1.0f) + 0.01f;
         // TODO: Use DDA for ray marching.
         float3 rayVS = lerp(rayOriginVS, rayEndVS, traveledDistance);
         float3 ray = TransformViewToScreenUV(rayVS);
@@ -255,44 +255,45 @@ float4 TraceDepthRays(float3 rayOriginVS, float3 rayEndVS, int stepsCount, int2 
         float probeDepth = -rayVS.z;
 
         float2 depthMoments = SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, ray.xy, 0);
-        float4 lighting = SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, ray.xy, _CascadeLevel + 1);
+        float4 lighting = SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, ray.xy, _CascadeLevel + 2);
         lighting.a = -1.0f;
         
         float meanDepth = depthMoments.x;
+        float thickenedDepth = depthMoments.x + 50.0f;
         float depthVariance = max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x);
-        float linearDepth = depthMoments.x + depthVariance;
+        float linearDepth = depthMoments.x + sqrt(depthVariance);
 
-        float depthOffsetNear = saturate(meanDepth - probeDepth);
-        float depthOffsetFar = saturate(meanDepth + 10.0f - probeDepth);
+        float meanDepthOffset = saturate((meanDepth - probeDepth) * 0.5f + 0.5f);
+        float thickenedDepthOffset = saturate((thickenedDepth - probeDepth) * 0.5f + 0.5f);
 
-        float depthDistance = sqrt(3) * (depthOffsetNear - saturate((linearDepth - probeDepth) * 0.5f + 0.5f));
-        float halfDepthThickness = 0.5f * (depthOffsetNear - depthOffsetFar);
-        float depthMidpoint = 0.5f * (depthOffsetFar + depthOffsetNear);
+        float depthDistance = sqrt(3) * (meanDepthOffset - saturate((linearDepth - probeDepth) * 0.5f + 0.5f));
+
+        float halfDepthThickness = 0.5f * (meanDepthOffset - thickenedDepthOffset);
+        float meanOffset = 0.5f * (thickenedDepthOffset + meanDepthOffset);
 
         float thicknessDifference = abs(halfDepthThickness - depthDistance);
         float depthRange = max(SMALL_FLT, halfDepthThickness + depthDistance - thicknessDifference);
         float varianceRatio = min(1.0f, halfDepthThickness / max(SMALL_FLT, depthDistance));
 
         float totalVariance = thicknessDifference + depthRange;
-        float clampedDepthDifference = min(abs(depthMidpoint), totalVariance);
+        float clampedDepthDifference = min(abs(meanOffset), totalVariance);
         float adjustedDepthDifference = max(0.0f, clampedDepthDifference - thicknessDifference);
 
-
-        float depthIntersectionFactorPrev = (0.0f > depthMidpoint ? 1.0f : -1.0f) * varianceRatio * (clampedDepthDifference + adjustedDepthDifference * adjustedDepthDifference * -0.5f / depthRange);
+        float depthIntersectionFactorPrev = (0.0f > meanOffset ? 1.0f : -1.0f) * varianceRatio * (clampedDepthDifference - 0.5f * adjustedDepthDifference * adjustedDepthDifference / depthRange);
         for (int depthRay = 0; depthRay < 4; depthRay++)
         {
-            float offset = (depthRay + 1.0f) * 0.125f;
-            float depthBias = min(abs(offset - depthMidpoint), totalVariance);
+            float offset = (depthRay + 1.0f) * 0.25f;
+            float depthBias = min(abs(offset - meanOffset), totalVariance);
             float adjustedDepthBias = max(0.0f, depthBias - thicknessDifference);
-            float depthIntersectionFactor = (offset > depthMidpoint ? 1.0f : -1.0f) * varianceRatio * (depthBias - 0.5f * adjustedDepthBias * adjustedDepthBias / depthRange);
+            float depthIntersectionFactor = (offset > meanOffset ? 1.0f : -1.0f) * varianceRatio * (depthBias - 0.5f * adjustedDepthBias * adjustedDepthBias / depthRange);
 
             float transmittance = pow(
-                clamp(1.0 - (depthIntersectionFactor - depthIntersectionFactorPrev) * 16.0f, 0.0f, 1.0f),
+                saturate(1.0f - (depthIntersectionFactor - depthIntersectionFactorPrev) * 16.0f),
                 cascadeExponent
             );
             depthIntersectionFactorPrev = depthIntersectionFactor;
 
-            radiance += lighting * transmittances[depthRay] * (1.0f - transmittance);
+            radiance += lighting * transmittances[depthRay] * (1.0f - transmittance) * 0.25f;
             transmittances[depthRay] *= transmittance;
         }
     }

@@ -139,6 +139,7 @@ float3 GetRayDirectionDFWS(float2 angleId, float cascadeLevel)
     sincos(theta, sinCosTheta.x, sinCosTheta.y);
 
     float3 ray = float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.y, sinCosTheta.x * sinCosPhi.x);
+    // return ray;
     return mul(_ViewToWorld, float4(ray.xzy, 0)).xyz;
 }
 
@@ -159,6 +160,7 @@ float3 GetRayDirectionDFVS(float2 angleId, float cascadeLevel)
     sincos(theta, sinCosTheta.x, sinCosTheta.y);
 
     float3 ray = float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.y, sinCosTheta.x * sinCosPhi.x);
+    // return mul(_WorldToView, ray);
     return ray.xzy;
 }
 

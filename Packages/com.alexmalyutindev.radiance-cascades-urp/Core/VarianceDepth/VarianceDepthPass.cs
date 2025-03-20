@@ -54,6 +54,9 @@ namespace AlexMalyutinDev.RadianceCascades.VarianceDepth
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
+            // TODO: VarianceDepth
+            // - Make VarianceDepth mip chain
+            // - Blur VarianceDepth
             if (_material == null) return;
 
             var cmd = CommandBufferPool.Get();
