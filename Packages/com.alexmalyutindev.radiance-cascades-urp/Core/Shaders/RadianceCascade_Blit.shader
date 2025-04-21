@@ -565,6 +565,9 @@ Shader "Hidden/RadianceCascade/Blit"
 
             float Linear01MinDepth(float2 minMaxDepth)
             {
+                minMaxDepth = (minMaxDepth - _ProjectionParams.y) * _ProjectionParams.w;
+                return dot(minMaxDepth, 0.5f);
+
                 minMaxDepth = 1.0 / (_ZBufferParams.x * minMaxDepth + _ZBufferParams.y);
                 return dot(minMaxDepth, 0.5f);
             }

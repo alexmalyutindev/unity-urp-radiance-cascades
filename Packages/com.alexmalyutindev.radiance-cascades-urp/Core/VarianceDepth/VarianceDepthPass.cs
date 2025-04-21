@@ -56,6 +56,7 @@ namespace AlexMalyutinDev.RadianceCascades.VarianceDepth
         {
             if (_material == null) return;
 
+            // TODO: Add VarianceDepth mip-chain!
             var cmd = CommandBufferPool.Get();
             using (new ProfilingScope(cmd, profilingSampler))
             {

@@ -68,12 +68,13 @@ IntegrationSector PrepareSector(float cascadePower)
     );
 
     float sigma = 1.0f;
-    float2 minmax = float2(0.0f, MY_FLT_EPS); // 1.0f / 16.0f);
+    float2 minmax = float2(0.0f, MY_FLT_EPS);
 
     Trapezoid trapezoid = GetVarianceTrapezoid(minmax, sigma);
 
     float prevOcclusion = IntegrateTrapezoid(trapezoid, -1.0f);
 
+    UNITY_UNROLL
     for (uint rayId = 0; rayId < 16; rayId++)
     {
         float alpha = (rayId + 1.0f) * (1.0f / 8.0f) - 1.0f;
@@ -157,6 +158,108 @@ half4x4 TraceDepthSector(
     }
 
     return sector.color;
+}
+
+void IntegrateDepthSector(
+    float3 probeViewDirectionVS, float3 minProbeCenterVS,
+    float3 occluderNearVS, float3 occluderFarVS, float3 occluderMeanVS,
+    float4 directLight,
+    float cascadePower,
+    inout IntegrationSector minSector
+)
+{
+    float nearAngle = dot(probeViewDirectionVS, normalize(minProbeCenterVS - occluderNearVS));
+    float farAngle = dot(probeViewDirectionVS, normalize(minProbeCenterVS - occluderFarVS));
+    float meanAngle = dot(probeViewDirectionVS, normalize(minProbeCenterVS - occluderMeanVS));
+
+    Trapezoid trapezoid = GetVarianceTrapezoid(float2(nearAngle, farAngle), meanAngle - nearAngle);
+
+    float prevOcclusion = IntegrateTrapezoid(trapezoid, 0);
+
+    UNITY_UNROLL
+    for (uint rayId = 0; rayId < 16; rayId++)
+    {
+        float alpha = (rayId + 1.0f) * (1.0f / 8.0f) - 1.0f;
+
+        int groupId = rayId / 4;
+        int subRayId = rayId % 4;
+
+        float occlusion = IntegrateTrapezoid(trapezoid, alpha);
+        float transmittance = saturate(pow(saturate(1.0f - (occlusion - prevOcclusion) * 16.0f), cascadePower));
+        prevOcclusion = occlusion;
+
+        float currentTransmittance = minSector.transmittance[groupId][subRayId];
+        minSector.color[groupId] += directLight * currentTransmittance * saturate(1.0f - transmittance) * 0.25h;
+        minSector.transmittance[groupId][subRayId] *= saturate(transmittance);
+    }
+}
+
+void ComputeProbeRadiance(
+    float2 probeMinMaxDepth,
+    float2 probeCenterUV,
+    float2 rayDirection,
+    float2 range,
+    float4 outputSizeTexel,
+    float cascadePower,
+    out half4x4 minProbeRad,
+    out half4x4 maxProbeRad
+)
+{
+    const float depthThickness = 50.0f;
+    const float stepSize = outputSizeTexel.w;
+
+    IntegrationSector minSector = PrepareSector(cascadePower);
+    IntegrationSector maxSector = minSector;
+
+    float3 probeCenterVS = ComputeViewSpacePosition(probeCenterUV, UNITY_RAW_FAR_CLIP_VALUE, _InvProjectionMatrix);
+    probeCenterVS.xyz /= probeCenterVS.z;
+
+    float3 minProbeCenterVS = probeCenterVS * probeMinMaxDepth.x;
+    float3 maxProbeCenterVS = probeCenterVS * probeMinMaxDepth.y;
+
+    float3 minProbeViewDirectionVS = -normalize(minProbeCenterVS);
+    float3 maxProbeViewDirectionVS = -normalize(maxProbeCenterVS);
+    
+    float2 directionUV = rayDirection * float2(outputSizeTexel.y * outputSizeTexel.z, 1.0h) * stepSize;
+
+    range.x = max(range.x, 1.0f);
+
+    UNITY_LOOP
+    for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)
+    {
+        float2 rayUV = probeCenterUV + rayStep * directionUV;
+
+        if (any(rayUV > 1 || rayUV < 0)) break;
+
+        float2 depthMoments = GetDepthMoments(rayUV);
+        float4 directLight = float4(GetSceneLighting(rayUV), -1.0);
+
+        float3 viewDirectionVS = ComputeViewSpacePosition(rayUV, UNITY_RAW_FAR_CLIP_VALUE, _InvProjectionMatrix);
+        viewDirectionVS.xyz /= viewDirectionVS.z;
+
+        float meanDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
+        float3 occluderNearVS = viewDirectionVS.xyz * depthMoments.x;
+        float3 occluderFarVS = viewDirectionVS.xyz * (depthMoments.x + depthThickness);
+        float3 occluderMeanVS = viewDirectionVS.xyz * meanDepth;
+
+        IntegrateDepthSector(
+            minProbeViewDirectionVS, minProbeCenterVS,
+            occluderNearVS, occluderFarVS, occluderMeanVS,
+            directLight,
+            cascadePower,
+            minSector
+        );
+        IntegrateDepthSector(
+            maxProbeViewDirectionVS, maxProbeCenterVS,
+            occluderNearVS, occluderFarVS, occluderMeanVS,
+            directLight,
+            cascadePower,
+            maxSector
+        );
+    }
+
+    minProbeRad = minSector.color;
+    maxProbeRad = maxSector.color;
 }
 
 #endif

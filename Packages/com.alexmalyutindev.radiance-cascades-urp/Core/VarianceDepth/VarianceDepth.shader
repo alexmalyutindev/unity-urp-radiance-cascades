@@ -99,7 +99,7 @@ Shader "Hidden/VarianceDepth"
             {
                 float2 offset = float2(0.0f, _BlitTexture_TexelSize.y);
                 float2 depth2 = 0.0f;
-                int range = 5;
+                int range = 2;
                 for (int y = -range; y <= range; y++)
                 {
                     float2 depthMoments = SAMPLE_TEXTURE2D(_BlitTexture, sampler_LinearClamp, input.uv + offset * y).rg;
@@ -153,7 +153,7 @@ Shader "Hidden/VarianceDepth"
             {
                 float2 offset = float2(_BlitTexture_TexelSize.x, 0.0f);
                 float2 depth2 = 0.0f;
-                int range = 5;
+                int range = 2;
                 for (int x = -range; x <= range; x++)
                 {
                     float2 depthMoments = SAMPLE_TEXTURE2D(_BlitTexture, sampler_LinearClamp, input.uv + offset * x).rg;
