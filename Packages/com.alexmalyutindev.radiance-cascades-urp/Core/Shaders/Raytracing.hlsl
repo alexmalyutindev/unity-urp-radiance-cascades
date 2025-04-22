@@ -72,12 +72,12 @@ IntegrationSector PrepareSector(float cascadePower)
 
     Trapezoid trapezoid = GetVarianceTrapezoid(minmax, sigma);
 
-    float prevOcclusion = IntegrateTrapezoid(trapezoid, -1.0f);
+    float prevOcclusion = IntegrateTrapezoid(trapezoid, 0.0f);
 
     UNITY_UNROLL
     for (uint rayId = 0; rayId < 16; rayId++)
     {
-        float alpha = (rayId + 1.0f) * (1.0f / 8.0f) - 1.0f;
+        float alpha = (rayId + 1.0f) * (1.0f / 16.0f);
 
         int groupId = rayId / 4;
         int subRayId = rayId % 4;
@@ -161,25 +161,25 @@ half4x4 TraceDepthSector(
 }
 
 void IntegrateDepthSector(
-    float3 probeViewDirectionVS, float3 minProbeCenterVS,
+    float3 probeNormalVS, float3 probeCenterVS,
     float3 occluderNearVS, float3 occluderFarVS, float3 occluderMeanVS,
     float4 directLight,
     float cascadePower,
     inout IntegrationSector minSector
 )
 {
-    float nearAngle = dot(probeViewDirectionVS, normalize(minProbeCenterVS - occluderNearVS));
-    float farAngle = dot(probeViewDirectionVS, normalize(minProbeCenterVS - occluderFarVS));
-    float meanAngle = dot(probeViewDirectionVS, normalize(minProbeCenterVS - occluderMeanVS));
+    float nearAngle = dot(probeNormalVS, normalize(probeCenterVS - occluderNearVS)) * 0.5f + 0.5f;
+    float farAngle = dot(probeNormalVS, normalize(probeCenterVS - occluderFarVS)) * 0.5f + 0.5f;
+    float meanAngle = dot(probeNormalVS, normalize(probeCenterVS - occluderMeanVS)) * 0.5f + 0.5f;
 
-    Trapezoid trapezoid = GetVarianceTrapezoid(float2(nearAngle, farAngle), meanAngle - nearAngle);
+    Trapezoid trapezoid = GetVarianceTrapezoid(float2(nearAngle, farAngle), nearAngle - meanAngle);
 
-    float prevOcclusion = IntegrateTrapezoid(trapezoid, 0);
+    float prevOcclusion = IntegrateTrapezoid(trapezoid, 0.0f);
 
     UNITY_UNROLL
     for (uint rayId = 0; rayId < 16; rayId++)
     {
-        float alpha = (rayId + 1.0f) * (1.0f / 8.0f) - 1.0f;
+        float alpha = (rayId + 1.0f) * (1.0f / 16.0f);
 
         int groupId = rayId / 4;
         int subRayId = rayId % 4;
@@ -213,13 +213,11 @@ void ComputeProbeRadiance(
 
     float3 probeCenterVS = ComputeViewSpacePosition(probeCenterUV, UNITY_RAW_FAR_CLIP_VALUE, _InvProjectionMatrix);
     probeCenterVS.xyz /= probeCenterVS.z;
+    float3 probeNormalVS = -normalize(probeCenterVS);
 
     float3 minProbeCenterVS = probeCenterVS * probeMinMaxDepth.x;
     float3 maxProbeCenterVS = probeCenterVS * probeMinMaxDepth.y;
 
-    float3 minProbeViewDirectionVS = -normalize(minProbeCenterVS);
-    float3 maxProbeViewDirectionVS = -normalize(maxProbeCenterVS);
-    
     float2 directionUV = rayDirection * float2(outputSizeTexel.y * outputSizeTexel.z, 1.0h) * stepSize;
 
     range.x = max(range.x, 1.0f);
@@ -243,14 +241,14 @@ void ComputeProbeRadiance(
         float3 occluderMeanVS = viewDirectionVS.xyz * meanDepth;
 
         IntegrateDepthSector(
-            minProbeViewDirectionVS, minProbeCenterVS,
+            probeNormalVS, minProbeCenterVS,
             occluderNearVS, occluderFarVS, occluderMeanVS,
             directLight,
             cascadePower,
             minSector
         );
         IntegrateDepthSector(
-            maxProbeViewDirectionVS, maxProbeCenterVS,
+            probeNormalVS, maxProbeCenterVS,
             occluderNearVS, occluderFarVS, occluderMeanVS,
             directLight,
             cascadePower,

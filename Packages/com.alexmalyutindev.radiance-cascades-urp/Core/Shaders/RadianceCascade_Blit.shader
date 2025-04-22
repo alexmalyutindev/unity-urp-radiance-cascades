@@ -293,10 +293,27 @@ Shader "Hidden/RadianceCascade/Blit"
                 return output;
             }
 
+            float3 RayDirectionVS(int x, int y)
+            {
+                static const float deltaPhi = TWO_PI * 0.25f; // 1/4
+                static const float deltaTheta = PI * 0.25f;
+                // Azimuth
+                float phi = (x + 0.5f) * deltaPhi;
+                // Polar
+                float theta = (y + 0.5f) * deltaTheta;
+
+                float2 sinCosPhi;
+                float2 sinCosTheta;
+                sincos(phi, sinCosPhi.x, sinCosPhi.y);
+                sincos(theta, sinCosTheta.x, sinCosTheta.y);
+
+                return float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.x * sinCosPhi.x, -sinCosTheta.y);
+            }
 
             half4 Fragment(Varyings input) : SV_TARGET
             {
-                float3 normalWS = SAMPLE_TEXTURE2D_LOD(_GBuffer2, sampler_PointClamp, input.texcoord, 0);
+                float3 normalVS = SAMPLE_TEXTURE2D_LOD(_GBuffer2, sampler_LinearClamp, input.texcoord, 0);
+                normalVS = TransformWorldToViewDir(normalVS);
 
                 // TODO: Bilateral Upsampling.
                 float depth = SAMPLE_TEXTURE2D_LOD(_CameraDepthTexture, sampler_PointClamp, input.texcoord, 0);
@@ -357,8 +374,8 @@ Shader "Hidden/RadianceCascade/Blit"
                             0
                         );
 
-                        float3 direction = GetRayDirectionDFWS(float2(x, y), 0);
-                        float NdotL = dot(direction, normalWS);
+                        float3 direction = RayDirectionVS(x, y);
+                        float NdotL = dot(direction, normalVS);
                         float4 radiance = lerp(radianceMin, radianceMax, depthWeight);
                         color += radiance * max(0, NdotL);
                     }
@@ -576,13 +593,14 @@ Shader "Hidden/RadianceCascade/Blit"
             {
                 float depth = Linear01Depth(SampleSceneDepth(uv), _ZBufferParams);
 
-                int2 shSize = floor(_BlitTexture_TexelSize.zw * 0.5f);
-                int2 lowerCoords = floor(uv * (shSize - 1));
+                int2 shSize = floor(_BlitTexture_TexelSize.zw * 0.5f - 1);
+                int2 lowerCoords = floor(uv * shSize);
 
                 float2 depth0 = LOAD_TEXTURE2D_LOD(_MinMaxDepth, lowerCoords, 1).xy;
                 float2 depth1 = LOAD_TEXTURE2D_LOD(_MinMaxDepth, lowerCoords + int2(1, 0), 1).xy;
                 float2 depth2 = LOAD_TEXTURE2D_LOD(_MinMaxDepth, lowerCoords + int2(0, 1), 1).xy;
                 float2 depth3 = LOAD_TEXTURE2D_LOD(_MinMaxDepth, lowerCoords + int2(1, 1), 1).xy;
+                // float4 lowerDepth = float4(depth0.x, depth1.x, depth2.x, depth3.x);
                 float4 lowerDepth = float4(
                     Linear01MinDepth(depth0),
                     Linear01MinDepth(depth1),
@@ -590,7 +608,7 @@ Shader "Hidden/RadianceCascade/Blit"
                     Linear01MinDepth(depth3)
                 );
 
-                float2 bilinearWeights = frac(uv * (shSize - 1));
+                float2 bilinearWeights = frac(uv * shSize);
                 float4 weights = float4(bilinearWeights, 1.0f - bilinearWeights);
                 weights = float4(
                     weights.z * weights.w,
@@ -610,7 +628,7 @@ Shader "Hidden/RadianceCascade/Blit"
                     float4(shX.g, shY.g, shZ.g, sh0.g),
                     float4(shX.b, shY.b, shZ.b, sh0.b)
                 );
-                return float4(max(half3(0.0h, 0.0h, 0.0h), L0L1), 1.0f);
+                return float4(max(float3(0.0f, 0.0f, 0.0f), L0L1), 1.0f);
             }
 
             half4 Fragment(Varyings input) : SV_TARGET
