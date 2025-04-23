@@ -84,11 +84,6 @@ namespace AlexMalyutinDev.RadianceCascades.VarianceDepth
                     width /= 2;
                     height /= 2;
                 }
-
-                // cmd.SetRenderTarget(_tempBuffer);
-                // BlitUtils.BlitTexture(cmd, _radianceCascadesRenderingData.VarianceDepth, _material, BlurVerticalPass);
-                // cmd.SetRenderTarget(_radianceCascadesRenderingData.VarianceDepth);
-                // BlitUtils.BlitTexture(cmd, _tempBuffer, _material, BlurHorizontalPass);
             }
 
             context.ExecuteCommandBuffer(cmd);

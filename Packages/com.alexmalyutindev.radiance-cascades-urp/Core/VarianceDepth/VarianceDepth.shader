@@ -47,6 +47,18 @@ Shader "Hidden/VarianceDepth"
 
         #define SAMPLE_INPUT_TEX(uv, mipLevel) SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv, mipLevel)
 
+        float2 GaussianBlur3(float2 uv, float2 offsetDirection)
+        {
+            float2 offset = _BlitTexture_TexelSize.xy * offsetDirection * pow(2, _InputMipLevel);
+            float2 momentsL0 = SAMPLE_INPUT_TEX(uv - offset, _InputMipLevel);
+            float2 momentsC0 = SAMPLE_INPUT_TEX(uv, _InputMipLevel);
+            float2 momentsR0 = SAMPLE_INPUT_TEX(uv + offset, _InputMipLevel);
+
+            return momentsC0 * 2.0f / 4.0f
+                + (momentsL0 + momentsR0) * 1.0f / 4.0f
+            ;
+        }
+
         float2 GaussianBlur5(float2 uv, float2 offsetDirection)
         {
             float2 offset = _BlitTexture_TexelSize.xy * offsetDirection * pow(2, _InputMipLevel);
@@ -58,7 +70,8 @@ Shader "Hidden/VarianceDepth"
 
             return momentsC0 * 6.0f / 16.0f
                 + (momentsL0 + momentsR0) * 4.0f / 16.0f
-                + (momentsL1 + momentsR1) * 1.0f / 16.0f;
+                + (momentsL1 + momentsR1) * 1.0f / 16.0f
+            ;
         }
         ENDHLSL
 
@@ -83,7 +96,7 @@ Shader "Hidden/VarianceDepth"
             HLSLPROGRAM
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                return GaussianBlur5(input.uv, float2(1, 0));
+                return GaussianBlur3(input.uv, float2(1, 0));
             }
             ENDHLSL
         }
@@ -95,7 +108,7 @@ Shader "Hidden/VarianceDepth"
             HLSLPROGRAM
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                return GaussianBlur5(input.uv, float2(0, 1));
+                return GaussianBlur3(input.uv, float2(0, 1));
             }
             ENDHLSL
         }

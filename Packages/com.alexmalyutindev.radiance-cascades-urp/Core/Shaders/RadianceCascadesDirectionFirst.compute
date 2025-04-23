@@ -193,29 +193,13 @@ float2x4 LoadUpperRadianceBilateral(int2 coords, float2 lowerProbeDepth)
 
 float2 GetDepthMoments(float2 uv)
 {
-    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_VarianceDepth, uv, _CascadeLevel).xy;
+    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_VarianceDepth, uv, _CascadeLevel + 2).xy;
 }
-
 float3 GetSceneLighting(float2 uv)
 {
-    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, uv, 0).rgb;
+    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, uv, _CascadeLevel + 1).rgb;
 }
-
 #include "Raytracing.hlsl"
-
-float4x4 TraceDepthRays(float3 probeCenterVS, float2 rayDirectionUV, int2 range)
-{
-    float cascadeExponent = 1u << _CascadeLevel;
-    float4 outputSizeTexel = float4(_ProbesCount, 1.0f / _ProbesCount);
-    half4x4 radiance = TraceDepthSector(
-        probeCenterVS,
-        rayDirectionUV,
-        float2(range.x, range.y + 1),
-        outputSizeTexel,
-        cascadeExponent
-    );
-    return radiance;
-}
 
 [numthreads(8, 4, 1)]
 void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
@@ -235,7 +219,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
     const float cascadeLevel = _CascadeLevel;
     float2 probeMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, probeCenterCoord, _CascadeLevel + 2).xy;
-    if (probeMinMaxDepth.x > _ProjectionParams.z * 0.95f)
+    if (probeMinMaxDepth.y > _ProjectionParams.z * 0.95f)
     {
         for (int depthRayId = 0; depthRayId < 4; depthRayId++)
         {
@@ -263,7 +247,8 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     float4x4 maxProbeRadiance;
 
     int factor = 2;
-    int2 range = int2(_CascadeLevel * factor, (_CascadeLevel + 1) * factor + 2);
+    // int2 range = int2(_CascadeLevel * factor, (_CascadeLevel + 1) * factor + 2);
+    int2 range = int2(0, (_CascadeLevel + 1) * factor);
 
     float4 outputSizeTexel = float4(_ProbesCount, 1.0f / _ProbesCount);
     float cascadeExponent = 1u << _CascadeLevel;
@@ -293,7 +278,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
             minProbeRadiance[depthRayId].a *= upperRadiance.a;
 
             upperRadiance = upperRadiances[1];
-            maxProbeRadiance[depthRayId].rgb += upperRadiance.rgb * saturate(maxProbeRadiance[depthRayId].a);
+            maxProbeRadiance[depthRayId].rgb += upperRadiance.rgb * saturate(maxProbeRadiance[depthRayId].a) * radianceSectorSize;
             maxProbeRadiance[depthRayId].a *= upperRadiance.a;
         }
     }
@@ -341,7 +326,7 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
     weightedMinMaxDepth = LinearEyeDepth(weightedMinMaxDepth, _ZBufferParams);
 
     float2 minMaxDepth = LinearEyeDepth(LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords, 1).xy, _ZBufferParams);
-    float depthThickness = max(weightedMinMaxDepth.x - weightedMinMaxDepth.y, 0.001f);
+    float depthThickness = max(weightedMinMaxDepth.x - weightedMinMaxDepth.y, 0.00000001f);
     float depthOffset = saturate((weightedMinMaxDepth.x - minMaxDepth.x) / depthThickness);
 
     float4 sh0 = 0.0f;
@@ -373,7 +358,7 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
 
             float4 radiance = lerp(radianceMin, radianceMax, depthOffset);
 
-            float3 direction = GetRayDirectionDFWS(int2(x, y), 0);
+            float3 direction = normalize(GetRayDirectionDFWS(int2(x, y), 0));
 
             sh0 += radiance * kSHBasis0;
             sh1 += radiance * direction.x * kSHBasis1;
