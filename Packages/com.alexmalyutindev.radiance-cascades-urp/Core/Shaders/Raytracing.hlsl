@@ -67,7 +67,7 @@ IntegrationSector PrepareSector(float cascadePower)
         float4(0.0f, 0.0f, 0.0f, 1.0f)
     );
 
-    float sigma = 1.0f;
+    float sigma = 0.1f;
     float2 minmax = float2(0.0f, MY_FLT_EPS);
 
     Trapezoid trapezoid = GetVarianceTrapezoid(minmax, sigma);
@@ -176,8 +176,9 @@ void IntegrateDepthSector(
     float nearAngle = dot(probeNormalVS, normalize(occluderNearVS - probeCenterVS)) * 0.5f + 0.5f;
     float farAngle = dot(probeNormalVS, normalize(occluderFarVS - probeCenterVS)) * 0.5f + 0.5f;
     float meanAngle = dot(probeNormalVS, normalize(occluderMeanVS - probeCenterVS)) * 0.5f + 0.5f;
-
-    Trapezoid trapezoid = GetVarianceTrapezoid(float2(nearAngle, farAngle), nearAngle - meanAngle);
+    float sigma = max(MY_FLT_EPS, nearAngle - meanAngle);
+    
+    Trapezoid trapezoid = GetVarianceTrapezoid(float2(nearAngle, farAngle), sigma);
 
     float prevOcclusion = IntegrateTrapezoid(trapezoid, 0.0f);
 
@@ -219,13 +220,13 @@ void ComputeProbeRadiance(
     float3 probeCenterVS = ComputeViewSpacePosition(probeCenterUV, UNITY_RAW_FAR_CLIP_VALUE, _InvProjectionMatrix);
     float3 probeNormalVS = normalize(probeCenterVS);
 
-    float3 probeViewDirectionVS = probeCenterVS.xyz / abs(probeCenterVS.z);
+    float3 probeViewDirectionVS = probeCenterVS / probeCenterVS.z;
     float3 minProbeCenterVS = probeViewDirectionVS * probeMinMaxDepth.x;
     float3 maxProbeCenterVS = probeViewDirectionVS * probeMinMaxDepth.y;
 
     float2 directionUV = stepSize * rayDirection * float2(outputSizeTexel.y * outputSizeTexel.z, 1.0h);
 
-    range.x = max(range.x, 0.0f);
+    range.x = max(1.0f, range.x);
 
     UNITY_LOOP
     for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)

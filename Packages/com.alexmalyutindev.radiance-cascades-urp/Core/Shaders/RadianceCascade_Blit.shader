@@ -312,8 +312,7 @@ Shader "Hidden/RadianceCascade/Blit"
 
             half4 Fragment(Varyings input) : SV_TARGET
             {
-                float3 normalVS = SAMPLE_TEXTURE2D_LOD(_GBuffer2, sampler_LinearClamp, input.texcoord, 0);
-                normalVS = TransformWorldToViewDir(normalVS);
+                float3 normalWS = SAMPLE_TEXTURE2D_LOD(_GBuffer2, sampler_LinearClamp, input.texcoord, 0);
 
                 // TODO: Bilateral Upsampling.
                 float depth = SAMPLE_TEXTURE2D_LOD(_CameraDepthTexture, sampler_PointClamp, input.texcoord, 0);
@@ -374,10 +373,10 @@ Shader "Hidden/RadianceCascade/Blit"
                             0
                         );
 
-                        float3 direction = RayDirectionVS(x, y);
-                        float NdotL = dot(direction, normalVS);
+                        float3 direction = GetRayDirectionDFWS(float2(x, y), 0);
+                        float NdotL = max(0, dot(direction, normalWS));
                         float4 radiance = lerp(radianceMin, radianceMax, depthWeight);
-                        color += radiance * max(0, NdotL);
+                        color += radiance * NdotL;
                     }
                 }
 
@@ -593,8 +592,8 @@ Shader "Hidden/RadianceCascade/Blit"
             {
                 float depth = Linear01Depth(SampleSceneDepth(uv), _ZBufferParams);
 
-                int2 shSize = floor(_BlitTexture_TexelSize.zw * 0.5f - 1);
-                int2 lowerCoords = floor(uv * shSize);
+                int2 shSize = floor(_BlitTexture_TexelSize.zw * 0.5f);
+                int2 lowerCoords = floor(uv * shSize - 0.5f);
 
                 float2 depth0 = LOAD_TEXTURE2D_LOD(_MinMaxDepth, lowerCoords, 1).xy;
                 float2 depth1 = LOAD_TEXTURE2D_LOD(_MinMaxDepth, lowerCoords + int2(1, 0), 1).xy;
@@ -608,7 +607,7 @@ Shader "Hidden/RadianceCascade/Blit"
                     Linear01MinDepth(depth3)
                 );
 
-                float2 bilinearWeights = frac(uv * shSize);
+                float2 bilinearWeights = frac(uv * shSize - 0.5f);
                 float4 weights = float4(bilinearWeights, 1.0f - bilinearWeights);
                 weights = float4(
                     weights.z * weights.w,
@@ -635,7 +634,7 @@ Shader "Hidden/RadianceCascade/Blit"
             {
                 half4 gbuffer0 = SAMPLE_TEXTURE2D_LOD(_GBuffer0, sampler_LinearClamp, input.texcoord, 0);
                 float3 normalWS = SAMPLE_TEXTURE2D_LOD(_GBuffer2, sampler_LinearClamp, input.texcoord, 0);
-                float4 radiance = SampleSH2(input.texcoord, normalize(normalWS));
+                float4 radiance = SampleSH2(input.texcoord, normalWS);
                 return radiance * gbuffer0;
             }
             ENDHLSL
