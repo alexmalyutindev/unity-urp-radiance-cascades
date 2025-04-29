@@ -147,11 +147,6 @@ float2x4 LoadUpperRadianceBilateral(int2 coords, float2 lowerProbeDepth)
     upperCascadeCoords += upperProbeLocalId;
     upperCascadeCoords.y += upperCascadeSize.y * 4;
 
-    // NOTE: Chebyshev Variance
-    // float2 uv = float2(lowerProbeId) / float2(_ProbesCount);
-    // float2 depthMoments = SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_PointClamp, uv, 0).rg;
-    // float smoothedDepth = depthMoments.x + sqrt(max(0.0, depthMoments.y - depthMoments.x * depthMoments.x));
-
     int depthLevel = _CascadeLevel + 3;
     static const int2 neighbours[4] = {int2(0, 0), int2(1, 0), int2(0, 1), int2(1, 1)};
     float2 weightedMinMaxDepth = 0.0f;
@@ -160,11 +155,10 @@ float2x4 LoadUpperRadianceBilateral(int2 coords, float2 lowerProbeDepth)
         float2 minMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, upperProbeLocalId + neighbours[i], depthLevel);
         weightedMinMaxDepth += minMaxDepth * weights[i];
     }
-    weightedMinMaxDepth = LinearEyeDepth(weightedMinMaxDepth, _ZBufferParams);
-    float depthThickness = max(weightedMinMaxDepth.x - weightedMinMaxDepth.y, 0.0001f);
+    float depthThickness = max(abs(weightedMinMaxDepth.y - weightedMinMaxDepth.x), 0.000001f);
 
-    float minProbeWeight = saturate((weightedMinMaxDepth[0] - lowerProbeDepth[0]) / depthThickness);
-    float maxProbeWeight = saturate((weightedMinMaxDepth[0] - lowerProbeDepth[1]) / depthThickness);
+    float minProbeWeight = saturate(abs(weightedMinMaxDepth.y - lowerProbeDepth.x) / depthThickness);
+    float maxProbeWeight = saturate(abs(weightedMinMaxDepth.y - lowerProbeDepth.y) / depthThickness);
 
     float2x4 radiance = 0.0f;
 
@@ -185,8 +179,8 @@ float2x4 LoadUpperRadianceBilateral(int2 coords, float2 lowerProbeDepth)
         minProbeRadiance += GetRadianceWeighted(upperCascadeCoords + off, weights) * 0.25f;
         maxProbeRadiance += GetRadianceWeighted(upperCascadeCoords + off + int2(halfCascadeBufferSizeX, 0), weights) * 0.25f;
     }
-    radiance[0] = lerp(minProbeRadiance, maxProbeRadiance, minProbeWeight);
-    radiance[1] = lerp(minProbeRadiance, maxProbeRadiance, maxProbeWeight);
+    radiance[0] = lerp(maxProbeRadiance, minProbeRadiance, minProbeWeight);
+    radiance[1] = lerp(maxProbeRadiance, minProbeRadiance, maxProbeWeight);
 
     return radiance;
 }
@@ -311,6 +305,9 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
             upperRadiance = upperRadiances[1];
             maxProbeRadiance[depthRayId].rgb += upperRadiance.rgb * saturate(maxProbeRadiance[depthRayId].a);
             maxProbeRadiance[depthRayId].a *= saturate(upperRadiance.a);
+
+            // minProbeRadiance[depthRayId] = upperRadiances[0];
+            // maxProbeRadiance[depthRayId] = upperRadiances[1];
         }
     }
 
@@ -354,11 +351,11 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
         float2 minMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, upperProbeLocalId + offset, 2);
         weightedMinMaxDepth += minMaxDepth * weights[i];
     }
-    weightedMinMaxDepth = LinearEyeDepth(weightedMinMaxDepth, _ZBufferParams);
 
-    float2 minMaxDepth = LinearEyeDepth(LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords, 1).xy, _ZBufferParams);
-    float depthThickness = max(weightedMinMaxDepth.x - weightedMinMaxDepth.y, 0.0000001f);
-    float depthOffset = saturate((weightedMinMaxDepth.x - minMaxDepth.x) / depthThickness);
+    float2 minMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords, 1).xy;
+    float midDepth = dot(minMaxDepth, 0.5f);
+    float depthThickness = max(abs(weightedMinMaxDepth.x - weightedMinMaxDepth.y), 0.0000001f);
+    float depthWeight = saturate((weightedMinMaxDepth.y - midDepth) / depthThickness);
 
     float4 sh0 = 0.0f;
     float4 sh1 = 0.0f;
@@ -387,7 +384,7 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
             radianceMax += _RadianceCascades[upperCoords + int2(0, 1)] * weights.z;
             radianceMax += _RadianceCascades[upperCoords + int2(1, 1)] * weights.w;
 
-            float4 radiance = lerp(radianceMin, radianceMax, depthOffset);
+            float4 radiance = lerp(radianceMax, radianceMin, depthWeight);
 
             float3 direction = normalize(GetRayDirectionDFWS(int2(x, y), 0));
 
