@@ -44,14 +44,26 @@ Shader "Hidden/VarianceDepth"
             return output;
         }
 
-        #define SAMPLE_INPUT_TEX(uv, mipLevel) SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv, mipLevel)
+        #define SAMPLE_INPUT_TEX(uv) SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv, 0)
+        #define SAMPLE_INPUT_TEX_LOD(uv, mipLevel) SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv, mipLevel)
+
+        float2 GaussianBlur3(float2 uv, float2 offsetDirection, int mipLevel)
+        {
+            float2 offset = _BlitTexture_TexelSize.xy * offsetDirection * pow(2, mipLevel);
+            float2 momentsL0 = SAMPLE_INPUT_TEX_LOD(uv - offset, mipLevel);
+            float2 momentsC0 = SAMPLE_INPUT_TEX_LOD(uv, mipLevel);
+            float2 momentsR0 = SAMPLE_INPUT_TEX_LOD(uv + offset, mipLevel);
+
+            return momentsC0 * 2.0f / 4.0f
+                + (momentsL0 + momentsR0) * 1.0f / 4.0f;
+        }
 
         float2 GaussianBlur3(float2 uv, float2 offsetDirection)
         {
-            float2 offset = _BlitTexture_TexelSize.xy * offsetDirection * pow(2, _InputMipLevel);
-            float2 momentsL0 = SAMPLE_INPUT_TEX(uv - offset, _InputMipLevel);
-            float2 momentsC0 = SAMPLE_INPUT_TEX(uv, _InputMipLevel);
-            float2 momentsR0 = SAMPLE_INPUT_TEX(uv + offset, _InputMipLevel);
+            float2 offset = _BlitTexture_TexelSize.xy * offsetDirection;
+            float2 momentsL0 = SAMPLE_INPUT_TEX(uv - offset);
+            float2 momentsC0 = SAMPLE_INPUT_TEX(uv);
+            float2 momentsR0 = SAMPLE_INPUT_TEX(uv + offset);
 
             return momentsC0 * 2.0f / 4.0f
                 + (momentsL0 + momentsR0) * 1.0f / 4.0f;
@@ -60,11 +72,11 @@ Shader "Hidden/VarianceDepth"
         float2 GaussianBlur5(float2 uv, float2 offsetDirection)
         {
             float2 offset = _BlitTexture_TexelSize.xy * offsetDirection * pow(2, _InputMipLevel);
-            float2 momentsL1 = SAMPLE_INPUT_TEX(uv - 2.0h * offset, _InputMipLevel);
-            float2 momentsL0 = SAMPLE_INPUT_TEX(uv - offset, _InputMipLevel);
-            float2 momentsC0 = SAMPLE_INPUT_TEX(uv, _InputMipLevel);
-            float2 momentsR0 = SAMPLE_INPUT_TEX(uv + offset, _InputMipLevel);
-            float2 momentsR1 = SAMPLE_INPUT_TEX(uv + 2.0h * offset, _InputMipLevel);
+            float2 momentsL1 = SAMPLE_INPUT_TEX_LOD(uv - 2.0h * offset, _InputMipLevel);
+            float2 momentsL0 = SAMPLE_INPUT_TEX_LOD(uv - offset, _InputMipLevel);
+            float2 momentsC0 = SAMPLE_INPUT_TEX_LOD(uv, _InputMipLevel);
+            float2 momentsR0 = SAMPLE_INPUT_TEX_LOD(uv + offset, _InputMipLevel);
+            float2 momentsR1 = SAMPLE_INPUT_TEX_LOD(uv + 2.0h * offset, _InputMipLevel);
 
             return momentsC0 * 6.0f / 16.0f
                 + (momentsL0 + momentsR0) * 4.0f / 16.0f

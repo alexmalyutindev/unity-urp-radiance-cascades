@@ -46,7 +46,6 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.MinMaxDepth, minMaxDepth);
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.BlurredColor, blurredColor);
 
-            cmd.SetComputeMatrixParam(_compute, "_InvProjectionMatrix", cameraData.GetProjectionMatrix().inverse);
 
             cmd.SetComputeVectorParam(_compute, ShaderIds.VarianceDepthSize, varianceDepthSizeTexel);
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.VarianceDepth, varianceDepth);
@@ -54,9 +53,12 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.SetComputeVectorParam(_compute, ShaderIds.CascadeBufferSize, targetSizeTexel);
             cmd.SetComputeTextureParam(_compute, kernel, "_RadianceCascades", target);
 
-            cmd.SetComputeMatrixParam(_compute, "_WorldToView", cameraData.GetViewMatrix());
-            cmd.SetComputeMatrixParam(_compute, "_ViewToWorld", cameraData.GetViewMatrix().inverse);
-            cmd.SetComputeMatrixParam(_compute, "_ViewToHClip", cameraData.GetProjectionMatrix());
+            var viewMatrix = cameraData.GetViewMatrix();
+            var projectionMatrix = cameraData.camera.nonJitteredProjectionMatrix;
+            cmd.SetComputeMatrixParam(_compute, "_WorldToView", viewMatrix);
+            cmd.SetComputeMatrixParam(_compute, "_ViewToWorld", viewMatrix.inverse);
+            cmd.SetComputeMatrixParam(_compute, "_ViewToHClip", projectionMatrix);
+            cmd.SetComputeMatrixParam(_compute, "_InvProjectionMatrix", projectionMatrix.inverse);
 
             cmd.SetComputeFloatParam(_compute, "_RayScale", rayScale);
 

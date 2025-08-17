@@ -61,6 +61,8 @@ namespace AlexMalyutinDev.RadianceCascades
             {
                 name = "VarianceDepth",
                 colorFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.RGFloat, false),
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
             };
             passData.VarianceDepth = renderGraph.CreateTexture(desc);
             builder.UseTexture(passData.VarianceDepth, AccessFlags.Write);

@@ -200,7 +200,7 @@ void IntegrateDepthSector(
     }
 }
 
-void ComputeProbeRadiance(
+half4 ComputeProbeRadiance(
     float2 probeMinMaxDepth,
     float2 probeCenterUV,
     float2 rayDirection,
@@ -220,18 +220,18 @@ void ComputeProbeRadiance(
     float3 probeCenterVS = ComputeViewSpacePosition(probeCenterUV, UNITY_RAW_FAR_CLIP_VALUE, _InvProjectionMatrix);
     float3 probeNormalVS = normalize(probeCenterVS);
 
-    float3 probeViewDirectionVS = probeCenterVS / probeCenterVS.z;
+    float3 probeViewDirectionVS = probeCenterVS / abs(probeCenterVS.z);
     float3 minProbeCenterVS = probeViewDirectionVS * probeMinMaxDepth.x;
     float3 maxProbeCenterVS = probeViewDirectionVS * probeMinMaxDepth.y;
 
     float2 directionUV = stepSize * rayDirection * float2(outputSizeTexel.y * outputSizeTexel.z, 1.0h);
 
-    range.x = max(1.0f, range.x);
+    //range.x = max(1.0f, range.x);
 
     UNITY_LOOP
     for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)
     {
-        float2 rayUV = probeCenterUV + rayStep * directionUV;
+        float2 rayUV = probeCenterUV + max(0.1f, rayStep) * directionUV;
 
         if (any(rayUV > 1 || rayUV < 0)) break;
 
@@ -239,7 +239,7 @@ void ComputeProbeRadiance(
         float4 directLight = float4(GetSceneLighting(rayUV), -1.0);
 
         float3 viewDirectionVS = ComputeViewSpacePosition(rayUV, UNITY_RAW_FAR_CLIP_VALUE, _InvProjectionMatrix);
-        viewDirectionVS.xyz /= viewDirectionVS.z;
+        viewDirectionVS.xyz /= abs(viewDirectionVS.z);
 
         float meanDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
         float3 occluderNearVS = viewDirectionVS * depthMoments.x;
@@ -264,6 +264,7 @@ void ComputeProbeRadiance(
 
     minProbeRad = minSector.color;
     maxProbeRad = maxSector.color;
+    return 0;
 }
 
 #endif

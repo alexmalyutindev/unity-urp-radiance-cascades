@@ -72,14 +72,6 @@ static const int2 Ranges4[6] =
     int2(256, 1024),
 };
 
-float3 TransformWorldToScreenSpace(float3 positionWS)
-{
-    float4 positionCS = TransformWorldToHClip(positionWS);
-    positionCS.xyz /= positionCS.w;
-    positionCS.xy = mad(positionCS.xy, float2(0.5f, -0.5f), float2(0.5f, 0.5f));
-    return positionCS.xyz;
-}
-
 inline float2 TransformViewToScreenUV(float3 positionVS)
 {
     float4 positionCS = mul(_ViewToHClip, float4(positionVS, 1));
@@ -241,12 +233,12 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     float4x4 minProbeRadiance;
     float4x4 maxProbeRadiance;
 
-    int factor = 2;
-    int2 range = int2(0, _CascadeLevel * factor);
+    int2 range = Ranges2[_CascadeLevel];
+    range.y += 1;
 
     float4 outputSizeTexel = float4(_ProbesCount / 2.0f, 1.0f / _ProbesCount * 2.0f);
     float cascadeExponent = 0.25f * (1u << _CascadeLevel);
-    ComputeProbeRadiance(
+    half4 test = ComputeProbeRadiance(
         probeMinMaxDepth,
         probeCenterUV,
         rayDirectionUV,
@@ -354,8 +346,9 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
 
     float2 minMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords, 1).xy;
     float midDepth = dot(minMaxDepth, 0.5f);
-    float depthThickness = max(abs(weightedMinMaxDepth.x - weightedMinMaxDepth.y), 0.0000001f);
-    float depthWeight = saturate((weightedMinMaxDepth.y - midDepth) / depthThickness);
+    // float depthThickness = max(abs(weightedMinMaxDepth.x - weightedMinMaxDepth.y), 0.0000001f);
+    // float depthWeight = saturate((weightedMinMaxDepth.y - midDepth) / depthThickness);
+    float depthWeight = exp(min(0.0f, weightedMinMaxDepth.y - midDepth) * 100);
 
     float4 sh0 = 0.0f;
     float4 sh1 = 0.0f;
