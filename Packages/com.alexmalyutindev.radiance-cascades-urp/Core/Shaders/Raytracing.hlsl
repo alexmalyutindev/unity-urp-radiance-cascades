@@ -94,73 +94,6 @@ IntegrationSector PrepareSector(float cascadePower)
     return sector;
 }
 
-half4x4 TraceDepthSector(
-    float3 probePositionVS,
-    float2 rayDirection,
-    float2 range,
-    float4 outputSizeTexel,
-    float cascadePower
-)
-{
-    const float depthThickness = 50.0f;
-    const float stepSize = outputSizeTexel.w;
-
-    IntegrationSector sector = PrepareSector(cascadePower);
-
-    float3 probeViewDirectionVS = -normalize(probePositionVS);
-    float2 probeCenterUV = TransformViewToScreenUV(probePositionVS).xy;
-    float2 directionUV = rayDirection * float2(outputSizeTexel.y * outputSizeTexel.z, 1.0h) * stepSize;
-
-    range.x = max(range.x, 1.0f);
-
-    UNITY_LOOP
-    for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)
-    {
-        float2 rayUV = probeCenterUV + rayStep * directionUV;
-
-        if (any(rayUV > 1 || rayUV < 0)) break;
-
-        float2 depthMoments = GetDepthMoments(rayUV);
-        float4 directLight = float4(GetSceneLighting(rayUV), -1.0);
-
-        float3 viewDirectionVS = ComputeViewSpacePosition(rayUV, UNITY_RAW_FAR_CLIP_VALUE, _InvProjectionMatrix);
-        viewDirectionVS.xyz /= viewDirectionVS.z;
-
-        float meanDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
-        float3 occluderNearVS = viewDirectionVS.xyz * depthMoments.x;
-        float3 occluderFarVS = viewDirectionVS.xyz * (depthMoments.x + depthThickness);
-        float3 occluderMeanVS = viewDirectionVS.xyz * meanDepth;
-
-        // TODO: Min and Max probe
-        float nearAngle = dot(probeViewDirectionVS, normalize(occluderNearVS - probePositionVS));
-        float farAngle = dot(probeViewDirectionVS, normalize(occluderFarVS - probePositionVS));
-        float meanAngle = dot(probeViewDirectionVS, normalize(occluderMeanVS - probePositionVS));
-
-        Trapezoid trapezoid = GetVarianceTrapezoid(float2(nearAngle, farAngle), meanAngle - nearAngle);
-
-        float prevOcclusion = IntegrateTrapezoid(trapezoid, 0);
-
-        for (uint rayId = 0; rayId < 16; rayId++)
-        {
-            float alpha = (rayId + 1.0f) * (1.0f / 8.0f) - 1.0f;
-
-            int groupId = rayId / 4;
-            int subRayId = rayId % 4;
-
-            float occlusion = IntegrateTrapezoid(trapezoid, alpha);
-            float transmittance = saturate(pow(saturate(1.0f - (occlusion - prevOcclusion) * 16.0f), cascadePower));
-            prevOcclusion = occlusion;
-
-            float currentTransmittance = sector.transmittance[groupId][subRayId];
-            sector.color[groupId] += directLight * currentTransmittance * saturate(1.0f - transmittance) * 0.25h;
-            sector.transmittance[groupId][subRayId] *= saturate(transmittance);
-        }
-    }
-
-    return sector.color;
-}
-
-
 //////////////
 /// ACTUAL ///
 //////////////
@@ -192,6 +125,7 @@ void IntegrateDepthSector(
 
         float occlusion = IntegrateTrapezoid(trapezoid, alpha);
         float transmittance = saturate(pow(saturate(1.0f - (occlusion - prevOcclusion) * 16.0f), cascadePower));
+        // float transmittance = saturate(1.0f - (occlusion - prevOcclusion) * 16.0f);
         prevOcclusion = occlusion;
 
         float currentTransmittance = minSector.transmittance[groupId][subRayId];
@@ -211,8 +145,8 @@ half4 ComputeProbeRadiance(
     out half4x4 maxProbeRad
 )
 {
-    const float depthThickness = 50.0f;
-    const float stepSize = outputSizeTexel.w;
+    const float depthThickness = 5.0f;
+    const float stepSize = 0.02f;
 
     IntegrationSector minSector = PrepareSector(cascadePower);
     IntegrationSector maxSector = minSector;
@@ -226,20 +160,18 @@ half4 ComputeProbeRadiance(
 
     float2 directionUV = stepSize * rayDirection * float2(outputSizeTexel.y * outputSizeTexel.z, 1.0h);
 
-    //range.x = max(1.0f, range.x);
-
     UNITY_LOOP
     for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)
     {
-        float2 rayUV = probeCenterUV + max(0.1f, rayStep) * directionUV;
+        float2 rayUV = probeCenterUV + max(0.01f, rayStep) * directionUV;
 
         if (any(rayUV > 1 || rayUV < 0)) break;
 
         float2 depthMoments = GetDepthMoments(rayUV);
-        float4 directLight = float4(GetSceneLighting(rayUV), -1.0);
+        float4 directLight = float4(GetSceneLighting(rayUV), -1.0f);
 
         float3 viewDirectionVS = ComputeViewSpacePosition(rayUV, UNITY_RAW_FAR_CLIP_VALUE, _InvProjectionMatrix);
-        viewDirectionVS.xyz /= abs(viewDirectionVS.z);
+        viewDirectionVS.xyz /= (viewDirectionVS.z);
 
         float meanDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
         float3 occluderNearVS = viewDirectionVS * depthMoments.x;

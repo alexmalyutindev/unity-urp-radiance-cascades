@@ -234,10 +234,12 @@ Shader "Hidden/BlurredColorBuffer"
             {
                 float2 offset = _OffsetDirection / _InputResolution.xy;
 
-                half4 color = SampleColorBuffer(input.uv, _InputMipLevel);
-                color += SampleColorBuffer(input.uv + offset.xy, _InputMipLevel);
-                color += SampleColorBuffer(input.uv - offset.xy, _InputMipLevel);
-                color *= 1.0f / 3.0f;
+                half4 color = SampleColorBuffer(input.uv, _InputMipLevel) * 6.0h;
+                color += SampleColorBuffer(input.uv + offset.xy, _InputMipLevel) * 4.0h;
+                color += SampleColorBuffer(input.uv - offset.xy, _InputMipLevel) * 4.0h;
+                color += SampleColorBuffer(input.uv + offset.xy * 2.0f, _InputMipLevel);
+                color += SampleColorBuffer(input.uv - offset.xy * 2.0f, _InputMipLevel);
+                color *= 1.0f / 16.0f;
 
                 return color;
             }
