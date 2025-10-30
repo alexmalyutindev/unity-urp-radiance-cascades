@@ -1,5 +1,5 @@
-#ifndef DEPTH_MOMENTS_TRAING
-#define DEPTH_MOMENTS_TRAING
+#ifndef DEPTH_MOMENTS_TRACING
+#define DEPTH_MOMENTS_TRACING
 
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 

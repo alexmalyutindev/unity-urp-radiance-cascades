@@ -23,7 +23,7 @@ Shader "Hidden/BlurredColorBuffer"
 
             Texture2D<float4> _BlitTexture;
             float4 _BlitTexture_TexelSize;
-            float2 _InputResolution;
+            float4 _InputSizeTexel;
             int _InputMipLevel;
 
             struct Attributes
@@ -56,8 +56,9 @@ Shader "Hidden/BlurredColorBuffer"
 
             half4 Fragment(Varyings input) : SV_TARGET
             {
-                float4 offset = 1.0f / float4(_InputResolution.xy, -_InputResolution.xy);
+                float4 offset = float4(_InputSizeTexel.zw, -_InputSizeTexel.zw);
 
+                // NOTE: Simple box blur into 1/2 res target
                 half4 color = SampleColorBuffer(input.uv + offset.xy, _InputMipLevel);
                 color += SampleColorBuffer(input.uv + offset.xw, _InputMipLevel);
                 color += SampleColorBuffer(input.uv + offset.zy, _InputMipLevel);
@@ -82,7 +83,7 @@ Shader "Hidden/BlurredColorBuffer"
 
             Texture2D<float4> _BlitTexture;
             float4 _BlitTexture_TexelSize;
-            float2 _InputResolution;
+            float4 _InputSizeTexel;
             int _InputMipLevel;
 
             struct Attributes
@@ -115,12 +116,11 @@ Shader "Hidden/BlurredColorBuffer"
 
             half4 Fragment(Varyings input) : SV_TARGET
             {
-                float2 offset = float2(1.0f / _InputResolution.x, 0.0f);
+                float2 offset = float2(_InputSizeTexel.z, 0.0f);
 
-                half4 color = SampleColorBuffer(input.uv, _InputMipLevel);
-                color += SampleColorBuffer(input.uv + offset.xy, _InputMipLevel);
-                color += SampleColorBuffer(input.uv - offset.xy, _InputMipLevel);
-                color *= 0.3334f;
+                half4 color = SampleColorBuffer(input.uv, _InputMipLevel) * 0.5h;
+                color += SampleColorBuffer(input.uv + offset.xy, _InputMipLevel) * 0.25h;
+                color += SampleColorBuffer(input.uv - offset.xy, _InputMipLevel) * 0.25h;
 
                 return color;
             }
@@ -140,7 +140,7 @@ Shader "Hidden/BlurredColorBuffer"
 
             Texture2D<float4> _BlitTexture;
             float4 _BlitTexture_TexelSize;
-            float2 _InputResolution;
+            float4 _InputSizeTexel;
             int _InputMipLevel;
 
             struct Attributes
@@ -173,12 +173,11 @@ Shader "Hidden/BlurredColorBuffer"
 
             half4 Fragment(Varyings input) : SV_TARGET
             {
-                float2 offset = float2(0.0f, 1.0f / _InputResolution.y);
+                float2 offset = float2(0.0f, _InputSizeTexel.w);
 
-                half4 color = SampleColorBuffer(input.uv, _InputMipLevel);
-                color += SampleColorBuffer(input.uv + offset.xy, _InputMipLevel);
-                color += SampleColorBuffer(input.uv - offset.xy, _InputMipLevel);
-                color *= 1.0f / 3.0f;
+                half4 color = SampleColorBuffer(input.uv, _InputMipLevel) * 0.5h;
+                color += SampleColorBuffer(input.uv + offset.xy, _InputMipLevel) * 0.25h;
+                color += SampleColorBuffer(input.uv - offset.xy, _InputMipLevel) * 0.25h;
 
                 return color;
             }
@@ -198,7 +197,7 @@ Shader "Hidden/BlurredColorBuffer"
 
             Texture2D<float4> _BlitTexture;
             float4 _BlitTexture_TexelSize;
-            float2 _InputResolution;
+            float4 _InputSizeTexel;
             float2 _OffsetDirection;
             int _InputMipLevel;
 
@@ -232,7 +231,7 @@ Shader "Hidden/BlurredColorBuffer"
 
             half4 Fragment(Varyings input) : SV_TARGET
             {
-                float2 offset = _OffsetDirection / _InputResolution.xy;
+                float2 offset = _OffsetDirection * _InputSizeTexel.zw;
 
                 half4 color = SampleColorBuffer(input.uv, _InputMipLevel) * 6.0h;
                 color += SampleColorBuffer(input.uv + offset.xy, _InputMipLevel) * 4.0h;

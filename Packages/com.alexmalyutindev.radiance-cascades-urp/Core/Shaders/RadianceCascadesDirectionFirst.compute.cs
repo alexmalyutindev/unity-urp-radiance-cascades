@@ -30,7 +30,8 @@ namespace AlexMalyutinDev.RadianceCascades
             TextureHandle blurredColor,
             float rayScale,
             ref TextureHandle target,
-            Vector4 targetSizeTexel
+            Vector4 cascade0Size,
+            Vector4 cascade0ProbesCount
         )
         {
             var kernel = _renderAndMergeKernel;
@@ -50,7 +51,7 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.SetComputeVectorParam(_compute, ShaderIds.VarianceDepthSize, varianceDepthSizeTexel);
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.VarianceDepth, varianceDepth);
 
-            cmd.SetComputeVectorParam(_compute, ShaderIds.CascadeBufferSize, targetSizeTexel);
+            cmd.SetComputeVectorParam(_compute, ShaderIds.CascadeBufferSize, cascade0Size * 8);
             cmd.SetComputeTextureParam(_compute, kernel, "_RadianceCascades", target);
 
             var viewMatrix = cameraData.GetViewMatrix();
@@ -62,25 +63,29 @@ namespace AlexMalyutinDev.RadianceCascades
 
             cmd.SetComputeFloatParam(_compute, "_RayScale", rayScale);
 
-            for (int cascadeLevel = 5; cascadeLevel >= 0; cascadeLevel--)
+            for (int cascadeLevel = 4; cascadeLevel >= 0; cascadeLevel--)
             {
-                Vector4 probesCount = new Vector4(
-                    Mathf.FloorToInt(targetSizeTexel.x / (8 * 1 << cascadeLevel)),
-                    Mathf.FloorToInt(targetSizeTexel.y / (8 * 1 << cascadeLevel))
-                );
-                probesCount.z = 1.0f / probesCount.x;
-                probesCount.w = 1.0f / probesCount.y;
-                cmd.SetComputeVectorParam(_compute, "_ProbesCount", probesCount);
-
                 cmd.SetComputeIntParam(_compute, "_CascadeLevel", cascadeLevel);
+
+                Vector4 cascadeSize = new Vector4(
+                    Mathf.FloorToInt(cascade0Size.x / (1 << cascadeLevel)),
+                    Mathf.FloorToInt(cascade0Size.y / (1 << cascadeLevel))
+                );
+                cmd.SetComputeVectorParam(_compute, "_CascadeSize", cascadeSize);
+                
+                Vector4 probesCount = new Vector4(
+                    Mathf.FloorToInt(cascade0ProbesCount.x / (1 << cascadeLevel)),
+                    Mathf.FloorToInt(cascade0ProbesCount.y / (1 << cascadeLevel))
+                );
+                cmd.SetComputeVectorParam(_compute, "_ProbesCount", probesCount);
 
                 _compute.GetKernelThreadGroupSizes(kernel, out var groupSizeX, out var groupSizeY, out _);
                 // TODO: Spawn only one cascade size Y groups, make all latitudinal ray in one thread?
                 cmd.DispatchCompute(
                     _compute,
                     kernel,
-                    Mathf.CeilToInt(targetSizeTexel.x / (2 * groupSizeX)),
-                    Mathf.CeilToInt(targetSizeTexel.y / (groupSizeY * (8 << cascadeLevel))),
+                    Mathf.CeilToInt(8 * cascade0Size.x / (2 * groupSizeX)),
+                    Mathf.CeilToInt(cascade0Size.y / (groupSizeY * (1 << cascadeLevel))),
                     1
                 );
             }

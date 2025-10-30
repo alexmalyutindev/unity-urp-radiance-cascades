@@ -18,7 +18,7 @@ namespace AlexMalyutinDev.RadianceCascades
     public class BlurredColorBufferPass : ScriptableRenderPass
     {
         private static readonly int InputMipLevelId = Shader.PropertyToID("_InputMipLevel");
-        private static readonly int InputResolutionId = Shader.PropertyToID("_InputResolution");
+        private static readonly int InputSizeTexelId = Shader.PropertyToID("_InputSizeTexel");
         private static readonly int OffsetDirectionId = Shader.PropertyToID("_OffsetDirection");
 
         private readonly Material _material;
@@ -42,7 +42,7 @@ namespace AlexMalyutinDev.RadianceCascades
             public TextureHandle TempBuffer;
             public Material Material;
 
-            public Vector4 InputResolution;
+            public Vector4 InputSizeTexel;
             public Vector4 TargetResolution;
             public int TargetMipsCount;
         }
@@ -60,7 +60,7 @@ namespace AlexMalyutinDev.RadianceCascades
 
             passData.Material = _material;
 
-            passData.InputResolution = new Vector4(frameDesc.width, frameDesc.height);
+            passData.InputSizeTexel = new Vector4(frameDesc.width, frameDesc.height, 1.0f / frameDesc.width, 1.0f / frameDesc.height);
             passData.FrameColor = resourceData.activeColorTexture;
             builder.UseTexture(passData.FrameColor);
 
@@ -93,7 +93,7 @@ namespace AlexMalyutinDev.RadianceCascades
                 var cmd = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
 
                 cmd.SetGlobalInteger(InputMipLevelId, 0);
-                cmd.SetGlobalVector(InputResolutionId, data.InputResolution);
+                cmd.SetGlobalVector(InputSizeTexelId, data.InputSizeTexel);
                 cmd.SetRenderTarget(data.BlurredColorBuffer, 0, CubemapFace.Unknown);
                 BlitUtils.BlitTexture(cmd, data.FrameColor, data.Material, 0);
 
@@ -105,13 +105,15 @@ namespace AlexMalyutinDev.RadianceCascades
                 // horizontal blur into TempBuffer, then vertical blur into BlurredColorBuffer
                 for (int mipLevel = 1; mipLevel < data.TargetMipsCount; mipLevel++)
                 {
-                    cmd.SetGlobalVector(InputResolutionId, new Vector4(width, height));
+                    // NOTE: Blur bigger color buffer in to 1/2
+                    cmd.SetGlobalVector(InputSizeTexelId, new Vector4(width, height, 1.0f / width, 1.0f / height));
 
                     cmd.SetRenderTarget(data.TempBuffer, mipLevel - 1);
                     cmd.SetGlobalInteger(InputMipLevelId, mipLevel - 1);
                     cmd.SetGlobalVector(OffsetDirectionId, new Vector4(1, 0));
                     BlitUtils.BlitTexture(cmd, data.BlurredColorBuffer, data.Material, 3);
 
+                    // NOTE: Blur current color buffer in to current mip chain
                     cmd.SetRenderTarget(data.BlurredColorBuffer, mipLevel);
                     cmd.SetGlobalInteger(InputMipLevelId, mipLevel - 1);
                     cmd.SetGlobalVector(OffsetDirectionId, new Vector4(0, 1));

@@ -31,6 +31,9 @@ namespace AlexMalyutinDev.RadianceCascades
             public RadianceCascadesDirectionFirstCS Compute;
             public float RayLength;
 
+            public Vector4 Cascade0Size;
+            public Vector4 Cascade0ProbesCount;
+
             public Vector4 CascadesSizeTexel;
             public TextureHandle Cascades;
             public Vector4 RadianceSHSizeTexel;
@@ -76,13 +79,20 @@ namespace AlexMalyutinDev.RadianceCascades
 
             passData.Compute = _compute;
 
-            int cascadeWidth = 2048; // cameraTextureDescriptor.width; // 2048; // 
-            int cascadeHeight = 1024; // cameraTextureDescriptor.height; // 1024; // 
+            int cascade0WidthWithPadding = Mathf.CeilToInt(cameraData.scaledWidth / 8.0f / 16.0f) * 16;
+            int cascade0HeightWithPadding = Mathf.CeilToInt(cameraData.scaledHeight / 8.0f / 16.0f) * 16;
+            passData.Cascade0Size = new Vector4(cascade0WidthWithPadding, cascade0HeightWithPadding);
+
+            int cascadeWidth = cascade0WidthWithPadding * 8; // 2048;
+            int cascadeHeight = cascade0HeightWithPadding * 8; // 1024; 
+            passData.Cascade0ProbesCount = new Vector4(cameraData.scaledWidth / 8, cameraData.scaledHeight / 8);
+
             var desc = new TextureDesc(cascadeWidth, cascadeHeight)
             {
                 name = "RadianceCascades",
                 colorFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGBFloat, false),
                 enableRandomWrite = true,
+                clearBuffer = true, // NOTE: TESTING!!! Remove after!
             };
             passData.CascadesSizeTexel = new Vector4(
                 desc.width, desc.height,
@@ -115,7 +125,8 @@ namespace AlexMalyutinDev.RadianceCascades
                     data.BlurredColor,
                     data.RayLength,
                     ref data.Cascades,
-                    data.CascadesSizeTexel
+                    data.Cascade0Size,
+                    data.Cascade0ProbesCount
                 );
 
                 data.Compute.CombineSH(
