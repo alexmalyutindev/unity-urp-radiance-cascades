@@ -105,7 +105,8 @@ namespace AlexMalyutinDev.RadianceCascades
                 cmd.SetGlobalFloat(ScaleId, 1);
                 cmd.SetGlobalVector(TargetResolutionId, data.TargetResolution);
                 cmd.SetGlobalVector(InputResolutionId, data.InputResolution);
-                BlitUtils.BlitTexture(cmd, data.FrameDepth, data.Material, DepthToMinMaxDepth);
+                // BlitUtils.BlitTexture(cmd, data.FrameDepth, data.Material, DepthToMinMaxDepth);
+                BlitUtils.BlitTexture(cmd, data.FrameDepth, data.Material, MinMaxOriginalDepthPass);
 
                 var width = (int)data.TargetResolution.x;
                 var height = (int)data.TargetResolution.y;

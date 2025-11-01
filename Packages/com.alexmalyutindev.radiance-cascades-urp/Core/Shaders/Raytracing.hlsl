@@ -146,7 +146,7 @@ half4 ComputeProbeRadiance(
 )
 {
     const float depthThickness = 5.0f;
-    const float stepSize = 0.02f;
+    const float stepSize = 0.05f;
 
     IntegrationSector minSector = PrepareSector(cascadePower);
     IntegrationSector maxSector = minSector;
@@ -163,7 +163,7 @@ half4 ComputeProbeRadiance(
     UNITY_LOOP
     for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)
     {
-        float2 rayUV = probeCenterUV + max(0.01f, rayStep) * directionUV;
+        float2 rayUV = probeCenterUV + max(0.5f, rayStep) * directionUV;
 
         if (any(rayUV > 1 || rayUV < 0)) break;
 

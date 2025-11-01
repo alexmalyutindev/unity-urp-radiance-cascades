@@ -79,13 +79,16 @@ namespace AlexMalyutinDev.RadianceCascades
 
             passData.Compute = _compute;
 
-            int cascade0WidthWithPadding = Mathf.CeilToInt(cameraData.scaledWidth / 8.0f / 16.0f) * 16;
-            int cascade0HeightWithPadding = Mathf.CeilToInt(cameraData.scaledHeight / 8.0f / 16.0f) * 16;
+            int cascade0WidthWithPadding = Mathf.CeilToInt(cameraData.scaledWidth / 4.0f / 16.0f) * 16;
+            int cascade0HeightWithPadding = Mathf.CeilToInt(cameraData.scaledHeight / 4.0f / 16.0f) * 16;
             passData.Cascade0Size = new Vector4(cascade0WidthWithPadding, cascade0HeightWithPadding);
 
             int cascadeWidth = cascade0WidthWithPadding * 8; // 2048;
             int cascadeHeight = cascade0HeightWithPadding * 8; // 1024; 
-            passData.Cascade0ProbesCount = new Vector4(cameraData.scaledWidth / 8, cameraData.scaledHeight / 8);
+
+            int probesCountX = cameraData.scaledWidth / 4;
+            int probesCountY = cameraData.scaledHeight / 4;
+            passData.Cascade0ProbesCount = new Vector4(probesCountX, probesCountY, 1.0f / probesCountX, 1.0f / probesCountY);
 
             var desc = new TextureDesc(cascadeWidth, cascadeHeight)
             {
@@ -137,7 +140,8 @@ namespace AlexMalyutinDev.RadianceCascades
                     data.MinMaxDepth,
                     data.VarianceDepth,
                     ref data.RadianceSH,
-                    data.RadianceSHSizeTexel
+                    data.Cascade0Size,
+                    data.Cascade0ProbesCount
                 );
             });
         }

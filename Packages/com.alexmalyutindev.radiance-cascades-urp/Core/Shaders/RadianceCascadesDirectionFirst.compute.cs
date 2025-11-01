@@ -85,7 +85,7 @@ namespace AlexMalyutinDev.RadianceCascades
                     _compute,
                     kernel,
                     Mathf.CeilToInt(8 * cascade0Size.x / (2 * groupSizeX)),
-                    Mathf.CeilToInt(cascade0Size.y / (groupSizeY * (1 << cascadeLevel))),
+                    Mathf.CeilToInt(cascade0Size.y / ((1 << cascadeLevel) * groupSizeY)),
                     1
                 );
             }
@@ -101,7 +101,8 @@ namespace AlexMalyutinDev.RadianceCascades
             TextureHandle minMaxDepth,
             TextureHandle varianceDepth,
             ref TextureHandle radianceSH,
-            Vector4 radianceSHSizeTexel
+            Vector4 cascadeProbesCountWithPadding,
+            Vector4 cascadeProbesCount
         )
         {
             var kernel = _combineSHKernel;
@@ -117,7 +118,9 @@ namespace AlexMalyutinDev.RadianceCascades
                 Mathf.FloorToInt(cascadesSizeTexel.y / 4)
             );
             // TODO: Replace props names with ids!
-            cmd.SetComputeVectorParam(_compute, "_ProbesCount", probesCount);
+            cmd.SetComputeVectorParam(_compute, "_ProbesCount", cascadeProbesCount);
+            cmd.SetComputeVectorParam(_compute, "_CascadeSize", cascadeProbesCountWithPadding);
+
             cmd.SetComputeMatrixParam(_compute, "_ViewToWorld", cameraData.GetViewMatrix().inverse);
 
             cmd.SetComputeTextureParam(_compute, kernel, "_RadianceCascades", cascades);
@@ -125,8 +128,9 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.VarianceDepth, varianceDepth);
             cmd.SetComputeTextureParam(_compute, kernel, "_RadianceSH", radianceSH);
 
-            int width = Mathf.FloorToInt(radianceSHSizeTexel.x) / 2;
-            int height = Mathf.FloorToInt(radianceSHSizeTexel.y) / 2;
+            // NOTE: This pass uses cascades buffer, and upscales it x2.
+            int width = Mathf.FloorToInt(cascadeProbesCountWithPadding.x) * 2;
+            int height = Mathf.FloorToInt(cascadeProbesCountWithPadding.y) * 2;
             cmd.DispatchCompute(_compute, kernel, width / 8, height / 4, 1);
             cmd.EndSample("RadianceCascade.CombineSH");
         }
