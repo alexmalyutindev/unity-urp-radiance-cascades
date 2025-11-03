@@ -63,7 +63,7 @@ namespace AlexMalyutinDev.RadianceCascades
 
             cmd.SetComputeFloatParam(_compute, "_RayScale", rayScale);
 
-            for (int cascadeLevel = 4; cascadeLevel >= 0; cascadeLevel--)
+            for (int cascadeLevel = 5; cascadeLevel >= 0; cascadeLevel--)
             {
                 cmd.SetComputeIntParam(_compute, "_CascadeLevel", cascadeLevel);
 

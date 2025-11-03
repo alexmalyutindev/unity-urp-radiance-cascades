@@ -146,7 +146,7 @@ half4 ComputeProbeRadiance(
 )
 {
     const float depthThickness = 5.0f;
-    const float stepSize = 0.05f;
+    const float stepSize = _RayScale * 0.1f; // 0.05f;
 
     IntegrationSector minSector = PrepareSector(cascadePower);
     IntegrationSector maxSector = minSector;
@@ -171,7 +171,7 @@ half4 ComputeProbeRadiance(
         float4 directLight = float4(GetSceneLighting(rayUV), -1.0f);
 
         float3 viewDirectionVS = ComputeViewSpacePosition(rayUV, UNITY_RAW_FAR_CLIP_VALUE, _InvProjectionMatrix);
-        viewDirectionVS.xyz /= (viewDirectionVS.z);
+        viewDirectionVS.xyz /= viewDirectionVS.z;
 
         float meanDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
         float3 occluderNearVS = viewDirectionVS * depthMoments.x;

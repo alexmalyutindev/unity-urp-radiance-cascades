@@ -55,12 +55,12 @@ RWTexture2D<float4> _RadianceSH;
 
 static const int2 Ranges2[6] =
 {
-    int2(0, 2),
+    int2(0, 1),
+    int2(1, 2),
     int2(2, 4),
     int2(4, 8),
     int2(8, 16),
     int2(16, 32),
-    int2(32, 64),
 };
 
 static const int2 Ranges4[6] =
@@ -109,15 +109,15 @@ float4x4 LoadUpperCascadesBilinear(int2 coords, float4 weights)
     );
 }
 
-void LoadUpperRadianceBilateral(
+float4 LoadUpperRadianceBilateral(
     int2 coords, float minProbeDepth, float maxProbeDepth,
     out float4 minProbeRadiance,
     out float4 maxProbeRadiance
 )
 {
     // TODO: Add ProbesCount to clip padding
-    const int2 upperCascadeSize = _CascadeSize * 0.5f;
-    const int2 upperCascadeProbesCount = _ProbesCount * 0.5f;
+    const int2 upperCascadeSize = floor(_CascadeSize * 0.5f);
+    const int2 upperCascadeProbesCount = floor(_ProbesCount * 0.5f);
 
     int2 lowerProbeId = coords % _CascadeSize; // NOTE: Wrap coords to cascade area with padding
     // | c | d |
@@ -125,7 +125,7 @@ void LoadUpperRadianceBilateral(
     // |[a]| b |
     // |___|___|
     float2 upperProbeLocalCoords = (lowerProbeId - 1.0f) * 0.5f;
-    int2 upperProbeLocalId = clamp(upperProbeLocalCoords, 0, upperCascadeProbesCount - 1);
+    int2 upperProbeLocalId = clamp(floor(upperProbeLocalCoords), int2(0, 0), upperCascadeProbesCount - 1);
 
     float2 bilinearOffsets = saturate(fmod(upperProbeLocalCoords, 1.0f) + 0.25f);
     float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
@@ -174,25 +174,34 @@ void LoadUpperRadianceBilateral(
 
     float4 minProbeSample = 0.0f;
     float4 maxProbeSample = 0.0f;
-    for (int rayI = 0; rayI < 4; rayI++)
+    for (int rayI = 1; rayI < 3; rayI++)
     {
         int2 off = neighbourRaysOffset[rayI];
-        minProbeSample += GetRadianceWeighted(upperCascadeCoords + off, bilinearWeights) * 0.25f;
+        minProbeSample += GetRadianceWeighted(upperCascadeCoords + off, bilinearWeights) * 0.5f;
         off.x += halfCascadeBufferSizeX;
-        maxProbeSample += GetRadianceWeighted(upperCascadeCoords + off, bilinearWeights) * 0.25f;
+        maxProbeSample += GetRadianceWeighted(upperCascadeCoords + off, bilinearWeights) * 0.5f;
     }
     minProbeRadiance = lerp(maxProbeSample, minProbeSample, minProbeWeight);
     maxProbeRadiance = lerp(maxProbeSample, minProbeSample, maxProbeWeight);
+
+    float4 test = _RadianceCascades[upperCascadeCoords];
+    return test;
+    return float4(minProbeWeight, maxProbeWeight, 0, 0);
 }
 
 float2 GetDepthMoments(float2 uv)
 {
-    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_VarianceDepth, uv, _CascadeLevel + 1).xy;
+    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, uv, 0).xy;
 }
 float3 GetSceneLighting(float2 uv)
 {
     return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, uv, _CascadeLevel).rgb;
 }
+float3 GetSceneLighting(float2 uv, int lod)
+{
+    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, uv, _CascadeLevel + lod).rgb;
+}
+
 #include "Raytracing.hlsl"
 
 [numthreads(8, 4, 1)]
@@ -202,12 +211,12 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     int2 targetCoords = int2(id.xy);
     targetCoords.y += _CascadeSize.y * 7;
 
+    // NOTE: Drop thread outside of cascade area. 
+    if (coords.x * 2 >= _CascadeBufferSize.x || coords.y >= _CascadeSize.y) return;
+
     int2 probeCenterCoord = coords % int2(_CascadeSize);
-    if (any(probeCenterCoord.xy >= int2(_ProbesCount.xy)))
-    {
-        _RadianceCascades[targetCoords] = float4(0, 0, 0, 0);
-        return;
-    }
+    // NOTE: Drop threads outside of cascade probes count.
+    if (any(probeCenterCoord.xy >= int2(_ProbesCount.xy))) return;
 
     float2 probeCenterUV = float2(probeCenterCoord + 0.5f) / _ProbesCount;
 
@@ -270,13 +279,17 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
             int2 upperRadianceCoord = coords + int2(0, _CascadeSize.y * (3 - depthRayId));
 
             float4 upperMinProbeRadiance, upperMaxProbeRadiance;
-            LoadUpperRadianceBilateral(
+            // BUG: LoadUpperRadianceBilateral incorrect weights!
+            float4 test2 = LoadUpperRadianceBilateral(
                 upperRadianceCoord,
                 probeMinMaxDepth.x,
                 probeMinMaxDepth.y,
                 upperMinProbeRadiance,
                 upperMaxProbeRadiance
             );
+
+            // _RadianceCascades[targetCoords] = test2;
+            // return;
 
             // Min probe
             float4 currentRadiance = minProbeRadiance[depthRayId];

@@ -24,14 +24,15 @@ Shader "Hidden/MinMaxDepth"
 
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                int2 coord = input.uv * _Scale * (_InputResolution - 1);
-                // coord = floor(input.positionCS.xy) * 2;
+                int2 coord = floor(input.positionCS.xy) * 2;
                 float4 depths = GatherDepth(coord, _InputMipLevel);
                 depths = LinearEyeDepth(depths, _ZBufferParams);
-                return float2(
+                float2 minMaxDepth = float2(
                     min(depths.x, min(depths.y, min(depths.z, depths.w))),
                     max(depths.x, max(depths.y, max(depths.z, depths.w)))
                 );
+
+                return minMaxDepth;
             }
             ENDHLSL
         }
@@ -49,8 +50,7 @@ Shader "Hidden/MinMaxDepth"
 
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                int2 coord = input.uv * _Scale * (_InputResolution - 1);
-                // coord = floor(input.positionCS.xy) * 2;
+                int2 coord = floor(input.positionCS.xy) * 2;
                 return LoadDepthMinMax(coord, _InputMipLevel);
             }
             ENDHLSL
