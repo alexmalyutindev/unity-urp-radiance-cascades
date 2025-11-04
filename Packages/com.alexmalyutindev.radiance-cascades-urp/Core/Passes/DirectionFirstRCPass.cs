@@ -79,9 +79,16 @@ namespace AlexMalyutinDev.RadianceCascades
 
             passData.Compute = _compute;
 
-            int cascade0WidthWithPadding = Mathf.CeilToInt(cameraData.scaledWidth / 4.0f / 16.0f) * 16;
-            int cascade0HeightWithPadding = Mathf.CeilToInt(cameraData.scaledHeight / 4.0f / 16.0f) * 16;
-            passData.Cascade0Size = new Vector4(cascade0WidthWithPadding, cascade0HeightWithPadding);
+            int lastCascadeScale = 2 << 5;
+            float lastCascadeScaleRcp = 1.0f / (2 << 5);
+            int cascade0WidthWithPadding = Mathf.CeilToInt(cameraData.scaledWidth / 4.0f * lastCascadeScaleRcp) * lastCascadeScale;
+            int cascade0HeightWithPadding = Mathf.CeilToInt(cameraData.scaledHeight / 4.0f * lastCascadeScaleRcp) * lastCascadeScale;
+            passData.Cascade0Size = new Vector4(
+                cascade0WidthWithPadding,
+                cascade0HeightWithPadding,
+                1.0f / cascade0WidthWithPadding,
+                1.0f / cascade0HeightWithPadding
+            );
 
             int cascadeWidth = cascade0WidthWithPadding * 8; // 2048;
             int cascadeHeight = cascade0HeightWithPadding * 8; // 1024; 

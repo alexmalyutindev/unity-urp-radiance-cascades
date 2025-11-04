@@ -67,8 +67,6 @@ IntegrationSector PrepareSector(float cascadePower)
         float4(0.0f, 0.0f, 0.0f, 1.0f)
     );
 
-    return sector;
-
     float sigma = 0.1f;
     float2 minmax = float2(0.0f, MY_FLT_EPS);
 
@@ -85,12 +83,12 @@ IntegrationSector PrepareSector(float cascadePower)
         int subRayId = rayId % 4;
 
         float occlusion = IntegrateTrapezoid(trapezoid, alpha);
-        float transmittance = pow(saturate(1.0f - (occlusion - prevOcclusion) * 16.0f), cascadePower);
+        float transmittance = saturate(pow(saturate(1.0f - (occlusion - prevOcclusion) * 16.0f), cascadePower));
         prevOcclusion = occlusion;
 
         float currentTransmittance = sector.transmittance[groupId][subRayId];
-        sector.color[groupId] += directLight * currentTransmittance * (1.0f - transmittance) * 0.25h;
-        sector.transmittance[groupId][subRayId] *= transmittance;
+        sector.color[groupId] += directLight * currentTransmittance * saturate(1.0f - transmittance) * 0.25h;
+        sector.transmittance[groupId][subRayId] *= saturate(transmittance);
     }
 
     return sector;
@@ -105,7 +103,7 @@ void IntegrateDepthSector(
     float3 occluderNearVS, float3 occluderFarVS, float3 occluderMeanVS,
     float4 directLight,
     float cascadePower,
-    inout IntegrationSector minSector
+    inout IntegrationSector sector
 )
 {
     float nearAngle = dot(probeNormalVS, normalize(occluderNearVS - probeCenterVS)) * 0.5f + 0.5f;
@@ -130,9 +128,9 @@ void IntegrateDepthSector(
         // float transmittance = saturate(1.0f - (occlusion - prevOcclusion) * 16.0f);
         prevOcclusion = occlusion;
 
-        float currentTransmittance = minSector.transmittance[groupId][subRayId];
-        minSector.color[groupId] += directLight * currentTransmittance * saturate(1.0f - transmittance) * 0.25h;
-        minSector.transmittance[groupId][subRayId] *= saturate(transmittance);
+        float currentTransmittance = sector.transmittance[groupId][subRayId];
+        sector.color[groupId] += directLight * currentTransmittance * saturate(1.0f - transmittance) * 0.25h;
+        sector.transmittance[groupId][subRayId] *= saturate(transmittance);
     }
 }
 
@@ -147,8 +145,8 @@ half4 ComputeProbeRadiance(
     out half4x4 maxProbeRad
 )
 {
-    const float depthThickness = 5.0f;
-    const float stepSize = _RayScale * 0.1f; // 0.05f;
+    const float depthThickness = 3.0f;
+    const float stepSize = _RayScale;
 
     IntegrationSector minSector = PrepareSector(cascadePower);
     IntegrationSector maxSector = minSector;
@@ -160,12 +158,12 @@ half4 ComputeProbeRadiance(
     float3 minProbeCenterVS = probeViewDirectionVS * probeMinMaxDepth.x;
     float3 maxProbeCenterVS = probeViewDirectionVS * probeMinMaxDepth.y;
 
-    float2 directionUV = stepSize * rayDirection * float2(outputSizeTexel.y * outputSizeTexel.z, 1.0h);
+    float2 directionUV = stepSize * rayDirection * outputSizeTexel.zw;
 
     UNITY_LOOP
     for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)
     {
-        float2 rayUV = probeCenterUV + max(0.5f, rayStep) * directionUV;
+        float2 rayUV = probeCenterUV + max(0.2f, rayStep) * directionUV;
 
         if (any(rayUV > 1 || rayUV < 0)) break;
 
