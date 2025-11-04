@@ -84,7 +84,12 @@ namespace AlexMalyutinDev.RadianceCascades
             // TODO: Refactor render target size! Only used in MinMaxDepthPass and BlurredColorBufferPass!
             var targetWidth = renderingData.cameraData.cameraTargetDescriptor.width;
             var targetHeight = renderingData.cameraData.cameraTargetDescriptor.height;
-            _radianceCascadesRenderingData.Cascade0Size = new Vector2Int(targetWidth / 8, targetHeight / 8);
+
+            var cascade0Size = DirectionFirstRCPass.GetCascade0Size(targetWidth, targetHeight);
+            _radianceCascadesRenderingData.Cascade0Size = new Vector2Int(
+                Mathf.FloorToInt(cascade0Size.x / 2), 
+                Mathf.FloorToInt(cascade0Size.y / 2)
+            );
 
             if (renderType == RenderingType.Simple2dProbes)
             {

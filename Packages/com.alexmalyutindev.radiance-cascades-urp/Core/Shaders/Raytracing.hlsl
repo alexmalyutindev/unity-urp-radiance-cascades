@@ -67,6 +67,8 @@ IntegrationSector PrepareSector(float cascadePower)
         float4(0.0f, 0.0f, 0.0f, 1.0f)
     );
 
+    return sector;
+
     float sigma = 0.1f;
     float2 minmax = float2(0.0f, MY_FLT_EPS);
 

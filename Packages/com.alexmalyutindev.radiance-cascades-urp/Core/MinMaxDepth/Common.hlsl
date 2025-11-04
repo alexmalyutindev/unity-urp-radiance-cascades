@@ -37,11 +37,13 @@ float4 LinearEyeDepth(float4 depth, float4 zBufferParam)
 #if defined(SINGLE_CHANNEL)
 float2 LoadDepth(int2 coord, int _InputMipLevel)
 {
+    coord = min(coord, int2(_InputResolution) - 1);
     return LOAD_TEXTURE2D_LOD(_BlitTexture, coord, _InputMipLevel).r;
 }
 #else
 float2 LoadDepth(int2 coord, int _InputMipLevel)
 {
+    // coord = min(coord, int2(_InputResolution) - 1);
     return LOAD_TEXTURE2D_LOD(_BlitTexture, coord, _InputMipLevel).rg;
 }
 #endif

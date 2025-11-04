@@ -63,21 +63,20 @@ namespace AlexMalyutinDev.RadianceCascades
 
             cmd.SetComputeFloatParam(_compute, "_RayScale", rayScale);
 
-            for (int cascadeLevel = 5; cascadeLevel >= 0; cascadeLevel--)
+            const int maxCascadeLevel = 5;
+            int currentCascadeSizeX = Mathf.FloorToInt(cascade0Size.x / (1 << maxCascadeLevel));
+            int currentCascadeSizeY = Mathf.FloorToInt(cascade0Size.x / (1 << maxCascadeLevel));
+            for (int cascadeLevel = maxCascadeLevel; cascadeLevel >= 0; cascadeLevel--)
             {
                 cmd.SetComputeIntParam(_compute, "_CascadeLevel", cascadeLevel);
 
-                Vector4 cascadeSize = new Vector4(
-                    Mathf.FloorToInt(cascade0Size.x / (1 << cascadeLevel)),
-                    Mathf.FloorToInt(cascade0Size.y / (1 << cascadeLevel))
-                );
+                var (cascadeSize, probesCount) = GetCascadeSizeAndProbesCount(cascade0Size, cascade0ProbesCount, cascadeLevel);
                 cmd.SetComputeVectorParam(_compute, "_CascadeSize", cascadeSize);
-                
-                Vector4 probesCount = new Vector4(
-                    Mathf.FloorToInt(cascade0ProbesCount.x / (1 << cascadeLevel)),
-                    Mathf.FloorToInt(cascade0ProbesCount.y / (1 << cascadeLevel))
-                );
                 cmd.SetComputeVectorParam(_compute, "_ProbesCount", probesCount);
+
+                var (upperCascadeSize, upperProbesCount) = GetCascadeSizeAndProbesCount(cascade0Size, cascade0ProbesCount, cascadeLevel + 1);
+                cmd.SetComputeVectorParam(_compute, "_UpperCascadeSize", upperCascadeSize);
+                cmd.SetComputeVectorParam(_compute, "_UpperProbesCount", upperProbesCount);
 
                 _compute.GetKernelThreadGroupSizes(kernel, out var groupSizeX, out var groupSizeY, out _);
                 // TODO: Spawn only one cascade size Y groups, make all latitudinal ray in one thread?
@@ -133,6 +132,19 @@ namespace AlexMalyutinDev.RadianceCascades
             int height = Mathf.FloorToInt(cascadeProbesCountWithPadding.y) * 2;
             cmd.DispatchCompute(_compute, kernel, width / 8, height / 4, 1);
             cmd.EndSample("RadianceCascade.CombineSH");
+        }
+
+        private (Vector4, Vector4) GetCascadeSizeAndProbesCount(Vector4 cascade0Size, Vector4 cascade0ProbesCount, int cascadeLevel)
+        {
+            var size = new Vector4(
+                Mathf.FloorToInt(cascade0Size.x / (1 << cascadeLevel)),
+                Mathf.FloorToInt(cascade0Size.y / (1 << cascadeLevel))
+            );
+            Vector4 probesCount = new Vector4(
+                Mathf.FloorToInt(cascade0ProbesCount.x / (1 << cascadeLevel)),
+                Mathf.FloorToInt(cascade0ProbesCount.y / (1 << cascadeLevel))
+            );
+            return (size, probesCount);
         }
     }
 }

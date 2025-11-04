@@ -207,5 +207,12 @@ namespace AlexMalyutinDev.RadianceCascades
                 1.0f / desc.width, 1.0f / desc.height
             );
         }
+
+        public static Vector4 GetCascade0Size(int targetWidth, int targetHeight)
+        {
+            int cascade0WidthWithPadding = Mathf.CeilToInt(targetWidth / 4.0f / 16.0f) * 16;
+            int cascade0HeightWithPadding = Mathf.CeilToInt(targetHeight / 4.0f / 16.0f) * 16;
+            return new Vector4(cascade0WidthWithPadding, cascade0HeightWithPadding);
+        }
     }
 }

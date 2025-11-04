@@ -25,6 +25,7 @@ Shader "Hidden/MinMaxDepth"
             float2 Fragment(Varyings input) : SV_TARGET
             {
                 int2 coord = floor(input.positionCS.xy) * 2;
+
                 float4 depths = GatherDepth(coord, _InputMipLevel);
                 depths = LinearEyeDepth(depths, _ZBufferParams);
                 float2 minMaxDepth = float2(
