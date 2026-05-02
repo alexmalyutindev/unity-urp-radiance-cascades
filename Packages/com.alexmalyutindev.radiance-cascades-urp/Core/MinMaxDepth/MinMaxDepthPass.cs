@@ -43,6 +43,7 @@ namespace AlexMalyutinDev.RadianceCascades
         {
             public TextureHandle MinMaxDepth;
             public TextureHandle IntermediateDownsampleBuffer;
+            public TextureHandle Test;
 
             public TextureHandle FrameDepth;
             public Material Material;
@@ -89,11 +90,20 @@ namespace AlexMalyutinDev.RadianceCascades
 
             if (SystemInfo.graphicsDeviceType is not (GraphicsDeviceType.Metal or GraphicsDeviceType.Vulkan))
             {
-                desc.name = "Temp";
-                desc.width >>= 1;
-                desc.height >>= 1;
-                desc.useMipMap = false;
-                passData.IntermediateDownsampleBuffer = builder.CreateTransientTexture(desc);
+                var intermediateDesc = desc;
+                intermediateDesc.name = "Temp";
+                intermediateDesc.width >>= 1;
+                intermediateDesc.height >>= 1;
+                intermediateDesc.useMipMap = false;
+                passData.IntermediateDownsampleBuffer = builder.CreateTransientTexture(intermediateDesc);
+            }
+
+            // NOTE: Test target!
+            if (false)
+            {
+                desc.name = "Test";
+                desc.colorFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGBFloat, false);
+                passData.Test = builder.CreateTransientTexture(desc);
             }
 
             builder.SetRenderFunc<PassData>(static (data, context) =>
@@ -136,6 +146,12 @@ namespace AlexMalyutinDev.RadianceCascades
 
                     width = Mathf.FloorToInt(width / 2.0f);
                     height = Mathf.FloorToInt(height / 2.0f);
+                }
+
+                if (false)
+                {
+                    cmd.SetRenderTarget(data.Test, 0);
+                    BlitUtils.BlitTexture(cmd, data.MinMaxDepth, data.Material, 4);
                 }
             });
         }

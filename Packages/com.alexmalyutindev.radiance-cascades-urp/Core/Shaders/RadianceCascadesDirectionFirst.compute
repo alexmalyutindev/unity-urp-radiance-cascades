@@ -24,6 +24,7 @@ Texture2D<float> _SmoothedDepth;
 
 SAMPLER(sampler_VarianceDepth);
 Texture2D<float2> _VarianceDepth;
+SAMPLER(sampler_BlurredColor);
 Texture2D<float4> _BlurredColor;
 
 /////////////
@@ -129,24 +130,27 @@ float4x4 LoadUpperCascadesBilinear(int2 coords, float4 weights)
 }
 
 float4 LoadUpperRadianceBilateral(
-    int2 coords, float minProbeDepth, float maxProbeDepth,
+    int2 coords,
+    float hiDepth_min, float hiDepth_max,
     out float4 minProbeRadiance,
     out float4 maxProbeRadiance
 )
 {
-    // TODO: Add ProbesCount to clip padding
-    const int2 upperCascadeSize = floor(_UpperCascadeSize); // floor(_CascadeSize * 0.5f);
-    const int2 upperCascadeProbesCount = floor(_UpperProbesCount); // floor(_ProbesCount * 0.5f);
-
-    int2 lowerProbeId = coords % _CascadeSize; // NOTE: Wrap coords to cascade area with padding
+    // ._______.
     // | c | d |
     // |___|___|
     // |[a]| b |
     // |___|___|
-    float2 upperProbeLocalCoords = (lowerProbeId - 1.0f) * 0.5f;
-    int2 upperProbeLocalId = clamp(floor(upperProbeLocalCoords), int2(0, 0), upperCascadeProbesCount - 1);
+    static const int2 neighbours[4] = {int2(0, 0), int2(1, 0), int2(0, 1), int2(1, 1)};
 
-    float2 bilinearOffsets = saturate(fmod(upperProbeLocalCoords, 1.0f) + 0.25f);
+    // TODO: Add ProbesCount to clip padding
+    const int2 lowCascadeSize = floor(_UpperCascadeSize); // floor(_CascadeSize * 0.5f);
+    int2 hiProbeId = coords % _CascadeSize; // NOTE: Wrap coords to cascade area with padding
+
+    float2 lowProbeLocalCoords = (hiProbeId - 1.0f) * 0.5f;
+    int2 lowProbeLocalId = max(int2(0, 0), (hiProbeId - int2(1, 1)) / 2);
+
+    float2 bilinearOffsets = saturate(fmod(lowProbeLocalCoords, 1.0f) + 0.25f);
     float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
     bilinearWeights = float4(
         bilinearWeights.z * bilinearWeights.w,
@@ -162,49 +166,56 @@ float4 LoadUpperRadianceBilateral(
     // 01----11----21----31----41----41
     // | A00 |     | B10 |     | C20 |
     // 00----10----20----30----40----40
-    int2 upperCascadeCoords = coords / 2;
-    upperCascadeCoords = floor(upperCascadeCoords / float2(upperCascadeSize)) * upperCascadeSize;
-    upperCascadeCoords.x *= 2;
-    upperCascadeCoords.y += upperCascadeSize.y * 4;
+    int2 lowCascadeCoords = coords / 2;
+    lowCascadeCoords = floor(lowCascadeCoords / float2(lowCascadeSize)) * lowCascadeSize;
+    lowCascadeCoords.x *= 2;
+    lowCascadeCoords.y += lowCascadeSize.y * 4;
 
-    int depthLevel = _CascadeLevel + 2; // TODO: Remove hardcode!
-    static const int2 neighbours[4] = {int2(0, 0), int2(1, 0), int2(0, 1), int2(1, 1)};
-    float2 weightedMinMaxDepth = 0.0f;
-    for (int i = 0; i < 4; i++)
+    // TODO: Remove hardcode!
+    int depthLevel = _CascadeLevel + 2;
+    float4 lowDepthABCD_min;
+    float4 lowDepthABCD_max;
+    UNITY_UNROLL for (int i = 0; i < 4; i++)
     {
-        float2 minMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, upperProbeLocalId + neighbours[i], depthLevel);
-        weightedMinMaxDepth += minMaxDepth * bilinearWeights[i];
+        int2 c = min(lowProbeLocalId + neighbours[i], lowCascadeSize - int2(1, 1));
+        float2 depthSample = LOAD_TEXTURE2D_LOD(_MinMaxDepth, c, depthLevel);
+        lowDepthABCD_min[i] = depthSample.x;
+        lowDepthABCD_max[i] = depthSample.y;
     }
 
-    float depthThickness = max(abs(weightedMinMaxDepth.y - weightedMinMaxDepth.x), 0.001f);
+    float4 probeWeights_min = exp2(-20.0h * abs(hiDepth_min - lowDepthABCD_min)) * bilinearWeights;
+    probeWeights_min = saturate(probeWeights_min / dot(1.0f, probeWeights_min));
 
-    float minProbeWeight = saturate(max(0.0f, minProbeDepth - weightedMinMaxDepth.x) / depthThickness);
-    float maxProbeWeight = saturate(max(0.0f, weightedMinMaxDepth.y - maxProbeDepth) / depthThickness);
+    float4 probeWeights_max = exp2(-20.0h * abs(hiDepth_max - lowDepthABCD_max)) * bilinearWeights;
+    probeWeights_max = saturate(probeWeights_max / dot(1.0f, probeWeights_max));
 
-    int2 offset = int2(upperCascadeSize.x, 0);
+    // NOTE: Angular 
+    int2 offset = int2(lowCascadeSize.x, 0);
     int halfCascadeBufferSizeX = floor(_CascadeBufferSize.x / 2);
     int2 neighbourRaysOffset[4] = {
-        -offset + int2(halfCascadeBufferSizeX, 0) * (upperCascadeCoords.x < offset.x),
+        -offset + int2(halfCascadeBufferSizeX, 0) * (lowCascadeCoords.x < offset.x),
         int2(0, 0),
         offset,
-        2 * offset - int2(halfCascadeBufferSizeX, 0) * (upperCascadeCoords.x + offset.x > halfCascadeBufferSizeX),
+        2 * offset - int2(halfCascadeBufferSizeX, 0) * (lowCascadeCoords.x + offset.x > halfCascadeBufferSizeX),
     };
 
-    float4 minProbeSample = 0.0f;
-    float4 maxProbeSample = 0.0f;
-    float4 rayWeights = float4(1.0f, 3.0f, 3.0f, 1.0f) / 8.0f;
-    for (int rayI = 0; rayI < 4; rayI++)
+    // TODO: Interpolate min/max radiance by depth?
+    float4 rayWeights = 0.25f; // float4(1.0f, 3.0f, 3.0f, 1.0f) / 8.0f;
+    minProbeRadiance = 0.0f;
+    maxProbeRadiance = 0.0f;
+    UNITY_UNROLL for (int rayI = 0; rayI < 4; rayI++)
     {
         int2 off = neighbourRaysOffset[rayI];
-        minProbeSample += GetRadianceWeightedSafe(upperProbeLocalId, upperCascadeCoords + off, bilinearWeights) * rayWeights[rayI];
+        float4 minProbeSample = GetRadianceWeightedSafe(lowProbeLocalId, lowCascadeCoords + off, probeWeights_min);
         off.x += halfCascadeBufferSizeX;
-        maxProbeSample += GetRadianceWeightedSafe(upperProbeLocalId, upperCascadeCoords + off, bilinearWeights) * rayWeights[rayI];
-    }
-    minProbeRadiance = lerp(minProbeSample, maxProbeSample, minProbeWeight);
-    maxProbeRadiance = lerp(maxProbeSample, minProbeSample, maxProbeWeight);
+        float4 maxProbeSample = GetRadianceWeightedSafe(lowProbeLocalId, lowCascadeCoords + off, probeWeights_max);
 
-    float4 test = _RadianceCascades[upperCascadeCoords];
-    test = depthThickness;
+        minProbeRadiance += minProbeSample * rayWeights[rayI];
+        maxProbeRadiance += maxProbeSample * rayWeights[rayI];
+    }
+
+    float4 test = _RadianceCascades[lowCascadeCoords];
+    test = abs(lowDepthABCD_min - hiDepth_min);
     return test;
 }
 
@@ -214,11 +225,11 @@ float2 GetDepthMoments(float2 uv)
 }
 float3 GetSceneLighting(float2 uv)
 {
-    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, uv, _CascadeLevel).rgb;
+    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_BlurredColor, uv, _CascadeLevel).rgb;
 }
 float3 GetSceneLighting(float2 uv, int lod)
 {
-    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, uv, _CascadeLevel + lod).rgb;
+    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_BlurredColor, uv, _CascadeLevel + lod).rgb;
 }
 
 #include "Raytracing.hlsl"
@@ -284,9 +295,10 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     float4x4 minProbeRadiance;
     float4x4 maxProbeRadiance;
 
-    int2 range = int2(pow(2.0f, cascadeLevel) - 1.0f, pow(2.0f, cascadeLevel + 1.0f) - 1.0f);
+    int2 range = int2(pow(2.0f, cascadeLevel), pow(2.0f, cascadeLevel + 1.0f));
+    range = int2(cascadeLevel * 4, (cascadeLevel + 1) * 4 + 1);
 
-    float4 outputSizeTexel = float4(_CascadeBufferSize); // float4(_ProbesCount, 1.0f / _ProbesCount); // 
+    float4 outputSizeTexel = float4(_ProbesCount, 1.0f / _ProbesCount); 
     float cascadeExponent = 0.25f * pow(2.0f, _CascadeLevel);
     half4 test = ComputeProbeRadiance(
         probeMinMaxDepth,
