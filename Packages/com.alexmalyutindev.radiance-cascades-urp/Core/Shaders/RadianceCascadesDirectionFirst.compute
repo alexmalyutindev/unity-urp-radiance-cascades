@@ -210,7 +210,7 @@ float4 LoadUpperRadianceBilateral(
     float4 probeWeights_max = exp2(-20.0h * abs(hiDepth_max - lowDepthABCD_max)) * bilinearWeights;
     probeWeights_max = saturate(probeWeights_max / dot(1.0f, probeWeights_max));
 
-    if (coords.x > _ProbesCount.x / 2)
+    if (false && coords.x > _ProbesCount.x / 2)
     {
         probeWeights_min = bilinearWeights;
         probeWeights_max = bilinearWeights;
@@ -227,10 +227,10 @@ float4 LoadUpperRadianceBilateral(
     };
 
     // TODO: Interpolate min/max radiance by depth?
-    float4 rayWeights = 0.5f; // float4(1.0f, 3.0f, 3.0f, 1.0f) / 8.0f;
+    float4 rayWeights = 0.25f; // float4(1.0f, 3.0f, 3.0f, 1.0f) / 8.0f;
     minProbeRadiance = 0.0f;
     maxProbeRadiance = 0.0f;
-    UNITY_UNROLL for (int rayI = 1; rayI < 3; rayI++)
+    UNITY_UNROLL for (int rayI = 0; rayI < 4; rayI++)
     {
         int2 offset_min = lowCascadeCoords + neighbourRaysOffset[rayI];
         float4 minProbeSample = GetRadianceWeightedSafe(lowProbeLocalId, offset_min, probeWeights_min);
@@ -308,7 +308,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     float4x4 minProbeRadiance;
     float4x4 maxProbeRadiance;
 
-    int2 range = int2(pow(2.0f, cascadeLevel) - 1.0f, pow(2.0f, cascadeLevel + 1.0f) + 1.0f);
+    int2 range = int2(pow(2.0f, cascadeLevel) + 1.0f, pow(2.0f, cascadeLevel + 2.0f)) + 4.0f;
     // range = int2(cascadeLevel * 4, (cascadeLevel + 1) * 4 + 1);
 
     float4 outputSizeTexel = float4(_ProbesCount, 1.0f / _ProbesCount); 
@@ -410,13 +410,25 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
 
     float2 weightedMinMaxDepth = 0.0f;
     float2 minMax2x2 = float2(10000.0f, 0.0f);
+    float4 lowDepthABCD_min;
+    float4 lowDepthABCD_max;
     for (uint i = 0; i < 4; i++)
     {
         int2 offset = int2(i % 2, i / 2);
         float2 minMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, upperProbeLocalId + offset, 1);
+        lowDepthABCD_min[i] = minMaxDepth.x;
+        lowDepthABCD_max[i] = minMaxDepth.y;
+
         weightedMinMaxDepth += minMaxDepth * bilinearWeights[i];
         minMax2x2 = float2(min(minMax2x2.x, minMaxDepth.x), max(minMax2x2.y, minMaxDepth.y));
     }
+
+    float2 hiMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, lowerProbeId, 0);
+    float4 depthWeight_min = exp2(-20.0f * abs(hiMinMaxDepth.x - lowDepthABCD_min)) * bilinearWeights;
+    depthWeight_min /= dot(depthWeight_min, 1.0f);
+
+    float4 depthWeight_max = exp2(-20.0f * abs(hiMinMaxDepth.x - lowDepthABCD_max)) * bilinearWeights;
+    depthWeight_max /= dot(depthWeight_max, 1.0f);
 
     float2 depthMoments = GetDepthMoments(coords / (2 * _ProbesCount.xy - 0.0f));
     float midDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
@@ -443,19 +455,19 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
             // Sample radiance trilinear (uv, depth). 
             int2 upperCoords = upperCascadeCoords + int2(x, -y) * upperCascadeSize;
             float4 radianceMin = 0.0f;
-            radianceMin += _RadianceCascades[upperCoords] * bilinearWeights.x;
-            radianceMin += _RadianceCascades[upperCoords + int2(1, 0)] * bilinearWeights.y;
-            radianceMin += _RadianceCascades[upperCoords + int2(0, 1)] * bilinearWeights.z;
-            radianceMin += _RadianceCascades[upperCoords + int2(1, 1)] * bilinearWeights.w;
+            radianceMin += _RadianceCascades[upperCoords] * depthWeight_min.x;
+            radianceMin += _RadianceCascades[upperCoords + int2(1, 0)] * depthWeight_min.y;
+            radianceMin += _RadianceCascades[upperCoords + int2(0, 1)] * depthWeight_min.z;
+            radianceMin += _RadianceCascades[upperCoords + int2(1, 1)] * depthWeight_min.w;
 
             upperCoords.x += 4 * upperCascadeSize.x;
             float4 radianceMax = 0.0f;
-            radianceMax += _RadianceCascades[upperCoords] * bilinearWeights.x;
-            radianceMax += _RadianceCascades[upperCoords + int2(1, 0)] * bilinearWeights.y;
-            radianceMax += _RadianceCascades[upperCoords + int2(0, 1)] * bilinearWeights.z;
-            radianceMax += _RadianceCascades[upperCoords + int2(1, 1)] * bilinearWeights.w;
+            radianceMax += _RadianceCascades[upperCoords] * depthWeight_max.x;
+            radianceMax += _RadianceCascades[upperCoords + int2(1, 0)] * depthWeight_max.y;
+            radianceMax += _RadianceCascades[upperCoords + int2(0, 1)] * depthWeight_max.z;
+            radianceMax += _RadianceCascades[upperCoords + int2(1, 1)] * depthWeight_max.w;
 
-            float4 radiance = lerp(radianceMin, radianceMax, depthWeight);
+            float4 radiance = (radianceMin + radianceMax) * 0.5f; // lerp(radianceMin, radianceMax, depthWeight);
             // radiance.rgb *= saturate(radiance.a);
 
             float3 direction = normalize(GetRayDirectionDFWS(int2(x, y), 0));
