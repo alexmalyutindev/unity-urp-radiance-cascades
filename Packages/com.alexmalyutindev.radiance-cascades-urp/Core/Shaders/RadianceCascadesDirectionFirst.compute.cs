@@ -64,8 +64,6 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.SetComputeFloatParam(_compute, "_RayScale", rayScale);
 
             const int maxCascadeLevel = 5;
-            int currentCascadeSizeX = Mathf.FloorToInt(cascade0Size.x / (1 << maxCascadeLevel));
-            int currentCascadeSizeY = Mathf.FloorToInt(cascade0Size.x / (1 << maxCascadeLevel));
             for (int cascadeLevel = maxCascadeLevel; cascadeLevel >= 0; cascadeLevel--)
             {
                 cmd.SetComputeFloatParam(_compute, "_CascadeLevel", cascadeLevel);

@@ -629,14 +629,13 @@ Shader "Hidden/RadianceCascade/Blit"
             {
                 half4 gbuffer0 = SAMPLE_TEXTURE2D_LOD(_GBuffer0, sampler_LinearClamp, input.texcoord, 0);
                 float3 normalWS = SAMPLE_TEXTURE2D_LOD(_GBuffer2, sampler_LinearClamp, input.texcoord, 0);
-                float4 radiance = SampleSH2(input.texcoord, normalWS);
 
-                int2 shSize = floor(_BlitTexture_TexelSize.zw * 0.5f);
-                int2 lowerCoords = input.positionCS.xy / 2;
-                float4 sh0 = LOAD_TEXTURE2D(_BlitTexture, lowerCoords + int2(0, shSize.y));
-                float4 shX = LOAD_TEXTURE2D(_BlitTexture, lowerCoords + shSize);
-                float4 shY = LOAD_TEXTURE2D(_BlitTexture, lowerCoords);
-                float4 shZ = LOAD_TEXTURE2D(_BlitTexture, lowerCoords + int2(shSize.x, 0));
+                // TODO: Bilateral upscaling!
+                float2 uv = 0.5f * input.positionCS.xy * _BlitTexture_TexelSize.xy;
+                float4 sh0 = SAMPLE_TEXTURE2D(_BlitTexture, sampler_LinearClamp, uv + float2(0, 0.5f));
+                float4 shX = SAMPLE_TEXTURE2D(_BlitTexture, sampler_LinearClamp, uv + 0.5f);
+                float4 shY = SAMPLE_TEXTURE2D(_BlitTexture, sampler_LinearClamp, uv);
+                float4 shZ = SAMPLE_TEXTURE2D(_BlitTexture, sampler_LinearClamp, uv + float2(0.5f, 0));
 
                 float3 L0L1 = SHEvalLinearL0L1(
                     normalWS,
@@ -644,7 +643,7 @@ Shader "Hidden/RadianceCascade/Blit"
                     float4(shX.g, shY.g, shZ.g, sh0.g),
                     float4(shX.b, shY.b, shZ.b, sh0.b)
                 );
-                radiance = float4(max(float3(0.0f, 0.0f, 0.0f), L0L1), 1.0f);
+                float4 radiance = float4(max(float3(0.0f, 0.0f, 0.0f), L0L1), 1.0f);
                 
                 return radiance * gbuffer0;
             }

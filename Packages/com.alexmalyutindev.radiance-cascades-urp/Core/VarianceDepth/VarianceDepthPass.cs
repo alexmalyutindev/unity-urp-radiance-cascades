@@ -21,6 +21,7 @@ namespace AlexMalyutinDev.RadianceCascades
         private const int DepthToMomentsPass = 0;
         private const int BlurHorizontalPass = 1;
         private const int BlurVerticalPass = 2;
+        private const int BlurDirectionalPass = 3;
         private readonly Material _material;
         private readonly RadianceCascadesRenderingData _radianceCascadesRenderingData;
 
@@ -89,15 +90,17 @@ namespace AlexMalyutinDev.RadianceCascades
 
                 var width = data.TargetResolution.x;
                 var height = data.TargetResolution.y;
-                for (int mipLevel = 0; mipLevel < data.TargetMipsCount; mipLevel++)
+                for (int mipLevel = 0; mipLevel < data.TargetMipsCount - 2; mipLevel++)
                 {
                     cmd.SetRenderTarget(data.IntermediateDownsampleBuffer, mipLevel);
                     cmd.SetGlobalInteger("_InputMipLevel", mipLevel);
                     cmd.SetGlobalVector("_InputTexelSize", new Vector4(1.0f / width, 1.0f / height, width, height));
-                    BlitUtils.BlitTexture(cmd, data.VarianceDepth, data.Material, BlurHorizontalPass);
+                    cmd.SetGlobalVector("_BlurDirection", new Vector4(1.0f, 0.0f));
+                    BlitUtils.BlitTexture(cmd, data.VarianceDepth, data.Material, BlurDirectionalPass);
 
+                    cmd.SetGlobalVector("_BlurDirection", new Vector4(0.0f, 1.0f));
                     cmd.SetRenderTarget(data.VarianceDepth, mipLevel);
-                    BlitUtils.BlitTexture(cmd, data.IntermediateDownsampleBuffer, data.Material, BlurVerticalPass);
+                    BlitUtils.BlitTexture(cmd, data.IntermediateDownsampleBuffer, data.Material, BlurDirectionalPass);
                     width /= 2;
                     height /= 2;
                 }

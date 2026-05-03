@@ -78,6 +78,27 @@ static const int2 Ranges4[6] =
     int2(256, 1024),
 };
 
+
+///////////////
+/// TRACING ///
+///////////////
+
+float2 GetDepthMoments(float2 uv)
+{
+    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_VarianceDepth, uv, _CascadeLevel).xy;
+}
+float3 GetSceneLighting(float2 uv)
+{
+    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_BlurredColor, uv, _CascadeLevel + 2).rgb;
+}
+float3 GetSceneLighting(float2 uv, int lod)
+{
+    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_BlurredColor, uv, _CascadeLevel + lod).rgb;
+}
+#include "Raytracing.hlsl"
+
+///////////////
+
 inline float2 TransformViewToScreenUV(float3 positionVS)
 {
     float4 positionCS = mul(_ViewToHClip, float4(positionVS, 1));
@@ -189,6 +210,12 @@ float4 LoadUpperRadianceBilateral(
     float4 probeWeights_max = exp2(-20.0h * abs(hiDepth_max - lowDepthABCD_max)) * bilinearWeights;
     probeWeights_max = saturate(probeWeights_max / dot(1.0f, probeWeights_max));
 
+    if (coords.x > _ProbesCount.x / 2)
+    {
+        probeWeights_min = bilinearWeights;
+        probeWeights_max = bilinearWeights;
+    }
+
     // NOTE: Angular 
     int2 offset = int2(lowCascadeSize.x, 0);
     int halfCascadeBufferSizeX = floor(_CascadeBufferSize.x / 2);
@@ -200,10 +227,10 @@ float4 LoadUpperRadianceBilateral(
     };
 
     // TODO: Interpolate min/max radiance by depth?
-    float4 rayWeights = 0.25f; // float4(1.0f, 3.0f, 3.0f, 1.0f) / 8.0f;
+    float4 rayWeights = 0.5f; // float4(1.0f, 3.0f, 3.0f, 1.0f) / 8.0f;
     minProbeRadiance = 0.0f;
     maxProbeRadiance = 0.0f;
-    UNITY_UNROLL for (int rayI = 0; rayI < 4; rayI++)
+    UNITY_UNROLL for (int rayI = 1; rayI < 3; rayI++)
     {
         int2 offset_min = lowCascadeCoords + neighbourRaysOffset[rayI];
         float4 minProbeSample = GetRadianceWeightedSafe(lowProbeLocalId, offset_min, probeWeights_min);
@@ -219,21 +246,6 @@ float4 LoadUpperRadianceBilateral(
     test = abs(lowDepthABCD_min - hiDepth_min);
     return test;
 }
-
-float2 GetDepthMoments(float2 uv)
-{
-    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, uv, _CascadeLevel).xy;
-}
-float3 GetSceneLighting(float2 uv)
-{
-    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_BlurredColor, uv, _CascadeLevel).rgb;
-}
-float3 GetSceneLighting(float2 uv, int lod)
-{
-    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_BlurredColor, uv, _CascadeLevel + lod).rgb;
-}
-
-#include "Raytracing.hlsl"
 
 [numthreads(8, 4, 1)]
 void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
@@ -334,7 +346,8 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
             if (_CascadeLevel == 0 && depthRayId == 2)
             {
                 // _RadianceCascades[targetCoords] = test2;
-                // _RadianceCascades[targetCoords] = upperMaxProbeRadiance;
+                // _RadianceCascades[targetCoords] = upperMinProbeRadiance;
+                // _RadianceCascades[targetCoords + int2(_CascadeBufferSize.x / 2, 0)] = upperMaxProbeRadiance;
                 // return;
             }
 
@@ -367,6 +380,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 [numthreads(8, 4, 1)]
 void CombineSH(uint3 id : SV_DispatchThreadID)
 {
+    // TODO: Add tracing!
     int2 coords = id.xy;
     if (any(coords.xy >= int2(_ProbesCount.xy * 2)))
     {
