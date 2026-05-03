@@ -16,9 +16,10 @@ Shader "Hidden/VarianceDepth"
 
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
+        SAMPLER(sampler_BlitTexture);
         Texture2D<float2> _BlitTexture;
-        float4 _BlitTexture_TexelSize;
         float4 _InputTexelSize;
+        float2 _BlurDirection;
         int _InputMipLevel;
 
         struct Attributes
@@ -44,26 +45,15 @@ Shader "Hidden/VarianceDepth"
             return output;
         }
 
-        #define SAMPLE_INPUT_TEX(uv) SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv, 0)
-        #define SAMPLE_INPUT_TEX_LOD(uv, mipLevel) SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_LinearClamp, uv, mipLevel)
-
-        float2 GaussianBlur3(float2 uv, float2 offsetDirection, int mipLevel)
-        {
-            float2 offset = _BlitTexture_TexelSize.xy * offsetDirection * pow(2, mipLevel);
-            float2 momentsL0 = SAMPLE_INPUT_TEX_LOD(uv - offset, mipLevel);
-            float2 momentsC0 = SAMPLE_INPUT_TEX_LOD(uv, mipLevel);
-            float2 momentsR0 = SAMPLE_INPUT_TEX_LOD(uv + offset, mipLevel);
-
-            return momentsC0 * 2.0f / 4.0f
-                + (momentsL0 + momentsR0) * 1.0f / 4.0f;
-        }
+        #define SAMPLE_INPUT_TEX(uv) SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_BlitTexture, uv, 0)
+        #define SAMPLE_INPUT_TEX_LOD(uv, mipLevel) SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_BlitTexture, uv, mipLevel)
 
         float2 GaussianBlur3(float2 uv, float2 offsetDirection)
         {
-            float2 offset = _BlitTexture_TexelSize.xy * offsetDirection;
-            float2 momentsL0 = SAMPLE_INPUT_TEX(uv - offset);
-            float2 momentsC0 = SAMPLE_INPUT_TEX(uv);
-            float2 momentsR0 = SAMPLE_INPUT_TEX(uv + offset);
+            float2 offset = _InputTexelSize.xy * offsetDirection;
+            float2 momentsL0 = SAMPLE_INPUT_TEX_LOD(uv - offset, _InputMipLevel);
+            float2 momentsC0 = SAMPLE_INPUT_TEX_LOD(uv, _InputMipLevel);
+            float2 momentsR0 = SAMPLE_INPUT_TEX_LOD(uv + offset, _InputMipLevel);
 
             return momentsC0 * 2.0f / 4.0f
                 + (momentsL0 + momentsR0) * 1.0f / 4.0f;
@@ -71,7 +61,7 @@ Shader "Hidden/VarianceDepth"
 
         float2 GaussianBlur5(float2 uv, float2 offsetDirection)
         {
-            float2 offset = _BlitTexture_TexelSize.xy * offsetDirection * pow(2, _InputMipLevel);
+            float2 offset = _InputTexelSize.xy * offsetDirection;
             float2 momentsL1 = SAMPLE_INPUT_TEX_LOD(uv - 2.0h * offset, _InputMipLevel);
             float2 momentsL0 = SAMPLE_INPUT_TEX_LOD(uv - offset, _InputMipLevel);
             float2 momentsC0 = SAMPLE_INPUT_TEX_LOD(uv, _InputMipLevel);
@@ -86,7 +76,7 @@ Shader "Hidden/VarianceDepth"
 
         Pass
         {
-            Name "DepthToMoments"
+            Name "0 DepthToMoments"
 
             HLSLPROGRAM
             float2 Fragment(Varyings input) : SV_TARGET
@@ -100,24 +90,36 @@ Shader "Hidden/VarianceDepth"
 
         Pass
         {
-            Name "DepthMomentsBlurV"
+            Name "1 DepthMomentsBlurH"
 
             HLSLPROGRAM
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                return GaussianBlur3(input.uv, float2(1, 0));
+                return GaussianBlur5(input.uv, float2(1, 0));
             }
             ENDHLSL
         }
 
         Pass
         {
-            Name "DepthMomentsBlurH"
+            Name "2 DepthMomentsBlurV"
 
             HLSLPROGRAM
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                return GaussianBlur3(input.uv, float2(0, 1));
+                return GaussianBlur5(input.uv, float2(0, 1));
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "3 DepthMomentsBlurD"
+
+            HLSLPROGRAM
+            float2 Fragment(Varyings input) : SV_TARGET
+            {
+                return GaussianBlur3(input.uv, _BlurDirection);
             }
             ENDHLSL
         }

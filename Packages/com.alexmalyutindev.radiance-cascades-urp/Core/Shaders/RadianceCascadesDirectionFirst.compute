@@ -9,7 +9,7 @@
 
 // Input
 float _RayScale;
-int _CascadeLevel;
+float _CascadeLevel;
 float2 _ProbesCount;
 float2 _CascadeSize;
 
@@ -205,10 +205,11 @@ float4 LoadUpperRadianceBilateral(
     maxProbeRadiance = 0.0f;
     UNITY_UNROLL for (int rayI = 0; rayI < 4; rayI++)
     {
-        int2 off = neighbourRaysOffset[rayI];
-        float4 minProbeSample = GetRadianceWeightedSafe(lowProbeLocalId, lowCascadeCoords + off, probeWeights_min);
-        off.x += halfCascadeBufferSizeX;
-        float4 maxProbeSample = GetRadianceWeightedSafe(lowProbeLocalId, lowCascadeCoords + off, probeWeights_max);
+        int2 offset_min = lowCascadeCoords + neighbourRaysOffset[rayI];
+        float4 minProbeSample = GetRadianceWeightedSafe(lowProbeLocalId, offset_min, probeWeights_min);
+
+        int2 offset_max = lowCascadeCoords + neighbourRaysOffset[rayI] + int2(halfCascadeBufferSizeX, 0);
+        float4 maxProbeSample = GetRadianceWeightedSafe(lowProbeLocalId, offset_max, probeWeights_max);
 
         minProbeRadiance += minProbeSample * rayWeights[rayI];
         maxProbeRadiance += maxProbeSample * rayWeights[rayI];
@@ -221,7 +222,7 @@ float4 LoadUpperRadianceBilateral(
 
 float2 GetDepthMoments(float2 uv)
 {
-    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, uv, 0).xy;
+    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, uv, _CascadeLevel).xy;
 }
 float3 GetSceneLighting(float2 uv)
 {
@@ -295,8 +296,8 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     float4x4 minProbeRadiance;
     float4x4 maxProbeRadiance;
 
-    int2 range = int2(pow(2.0f, cascadeLevel), pow(2.0f, cascadeLevel + 1.0f));
-    range = int2(cascadeLevel * 4, (cascadeLevel + 1) * 4 + 1);
+    int2 range = int2(pow(2.0f, cascadeLevel) - 1.0f, pow(2.0f, cascadeLevel + 1.0f) + 1.0f);
+    // range = int2(cascadeLevel * 4, (cascadeLevel + 1) * 4 + 1);
 
     float4 outputSizeTexel = float4(_ProbesCount, 1.0f / _ProbesCount); 
     float cascadeExponent = 0.25f * pow(2.0f, _CascadeLevel);

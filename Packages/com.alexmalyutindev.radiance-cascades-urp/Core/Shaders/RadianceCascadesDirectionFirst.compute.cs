@@ -68,7 +68,7 @@ namespace AlexMalyutinDev.RadianceCascades
             int currentCascadeSizeY = Mathf.FloorToInt(cascade0Size.x / (1 << maxCascadeLevel));
             for (int cascadeLevel = maxCascadeLevel; cascadeLevel >= 0; cascadeLevel--)
             {
-                cmd.SetComputeIntParam(_compute, "_CascadeLevel", cascadeLevel);
+                cmd.SetComputeFloatParam(_compute, "_CascadeLevel", cascadeLevel);
 
                 var (cascadeSize, probesCount) = GetCascadeSizeAndProbesCount(cascade0Size, cascade0ProbesCount, cascadeLevel);
                 cmd.SetComputeVectorParam(_compute, "_CascadeSize", cascadeSize);

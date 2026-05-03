@@ -19,11 +19,10 @@ namespace AlexMalyutinDev.RadianceCascades
     public class VarianceDepthPass : ScriptableRenderPass
     {
         private const int DepthToMomentsPass = 0;
-        private const int BlurVerticalPass = 1;
-        private const int BlurHorizontalPass = 2;
+        private const int BlurHorizontalPass = 1;
+        private const int BlurVerticalPass = 2;
         private readonly Material _material;
         private readonly RadianceCascadesRenderingData _radianceCascadesRenderingData;
-        private RTHandle _tempBuffer;
 
         public VarianceDepthPass(Material material, RadianceCascadesRenderingData radianceCascadesRenderingData)
         {
@@ -35,9 +34,12 @@ namespace AlexMalyutinDev.RadianceCascades
         private class PassData
         {
             public TextureHandle FrameDepth;
-            public TextureHandle TempBuffer;
+            public TextureHandle IntermediateDownsampleBuffer;
             public TextureHandle VarianceDepth;
             public Material Material;
+
+            public int TargetMipsCount;
+            public Vector2Int TargetResolution;
         }
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
@@ -63,44 +65,42 @@ namespace AlexMalyutinDev.RadianceCascades
                 colorFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.RGFloat, false),
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Bilinear,
+                useMipMap = true,
+                autoGenerateMips = false,
             };
+            passData.TargetResolution = new Vector2Int(desc.width, desc.height);
+            passData.TargetMipsCount = (int)Mathf.Log(desc.height, 2);
+
             passData.VarianceDepth = renderGraph.CreateTexture(desc);
             builder.UseTexture(passData.VarianceDepth, AccessFlags.Write);
             varianceDepthData.VarianceDepth = passData.VarianceDepth;
-
-            desc.name = "Temp";
-            passData.TempBuffer = builder.CreateTransientTexture(desc);
+            
+            var intermediateDesc = desc;
+            intermediateDesc.name = "IntermediateDownsampleBuffer";
+            passData.IntermediateDownsampleBuffer = builder.CreateTransientTexture(intermediateDesc);
 
             builder.SetRenderFunc<PassData>(static (data, context) =>
             {
                 var cmd = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
 
-                cmd.SetRenderTarget(data.VarianceDepth);
+                cmd.SetRenderTarget(data.VarianceDepth, 0);
                 BlitUtils.BlitTexture(cmd, data.FrameDepth, data.Material, DepthToMomentsPass);
+                cmd.GenerateMips(data.VarianceDepth);
 
-                cmd.SetRenderTarget(data.TempBuffer);
-                BlitUtils.BlitTexture(cmd, data.VarianceDepth, data.Material, BlurVerticalPass);
+                var width = data.TargetResolution.x;
+                var height = data.TargetResolution.y;
+                for (int mipLevel = 0; mipLevel < data.TargetMipsCount; mipLevel++)
+                {
+                    cmd.SetRenderTarget(data.IntermediateDownsampleBuffer, mipLevel);
+                    cmd.SetGlobalInteger("_InputMipLevel", mipLevel);
+                    cmd.SetGlobalVector("_InputTexelSize", new Vector4(1.0f / width, 1.0f / height, width, height));
+                    BlitUtils.BlitTexture(cmd, data.VarianceDepth, data.Material, BlurHorizontalPass);
 
-                cmd.SetRenderTarget(data.VarianceDepth);
-                BlitUtils.BlitTexture(cmd, data.TempBuffer, data.Material, BlurHorizontalPass);
-                
-                // TODO: Add mipmaps!
-                // int width = _radianceCascadesRenderingData.VarianceDepth.rt.width;
-                // int height = _radianceCascadesRenderingData.VarianceDepth.rt.height;
-                // for (int mipLevel = 0; mipLevel < _radianceCascadesRenderingData.VarianceDepth.rt.mipmapCount; mipLevel++)
-                // {
-                //     cmd.SetGlobalInteger("_InputMipLevel", mipLevel);
-                //     cmd.SetGlobalVector("_InputTexelSize", new Vector4(1.0f / width, 1.0f / height, width, width));
-                //
-                //     cmd.SetRenderTarget(_tempBuffer, mipLevel);
-                //     BlitUtils.BlitTexture(cmd, _radianceCascadesRenderingData.VarianceDepth, _material, BlurVerticalPass);
-                //
-                //     cmd.SetRenderTarget(_radianceCascadesRenderingData.VarianceDepth, mipLevel);
-                //     BlitUtils.BlitTexture(cmd, _tempBuffer, _material, BlurHorizontalPass);
-                //
-                //     width /= 2;
-                //     height /= 2;
-                // }
+                    cmd.SetRenderTarget(data.VarianceDepth, mipLevel);
+                    BlitUtils.BlitTexture(cmd, data.IntermediateDownsampleBuffer, data.Material, BlurVerticalPass);
+                    width /= 2;
+                    height /= 2;
+                }
             });
         }
     }
