@@ -115,8 +115,8 @@ namespace AlexMalyutinDev.RadianceCascades
                 Mathf.FloorToInt(cascadesSizeTexel.y / 4)
             );
             // TODO: Replace props names with ids!
-            cmd.SetComputeVectorParam(_compute, "_ProbesCount", cascadeProbesCount);
-            cmd.SetComputeVectorParam(_compute, "_CascadeSize", cascadeProbesCountWithPadding);
+            cmd.SetComputeVectorParam(_compute, "_ProbesCount", cascadeProbesCount * 2.0f);
+            cmd.SetComputeVectorParam(_compute, "_CascadeSize", cascadeProbesCountWithPadding * 2.0f);
 
             cmd.SetComputeMatrixParam(_compute, "_ViewToWorld", cameraData.GetViewMatrix().inverse);
 

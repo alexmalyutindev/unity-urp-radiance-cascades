@@ -649,5 +649,60 @@ Shader "Hidden/RadianceCascade/Blit"
             }
             ENDHLSL
         }
+
+        Pass
+        {
+            Name "5 LoadBlit"
+            ZTest Off
+            ZWrite Off
+            Blend One Zero
+
+            HLSLPROGRAM
+            #pragma vertex Vertex
+            #pragma fragment Fragment
+
+            #pragma target 2.0
+            #pragma editor_sync_compilation
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            float4 _BlitTexture_TexelSize;
+            TEXTURE2D_X(_BlitTexture);
+
+            struct Attributes
+            {
+                float4 positionOS : POSITION;
+                float2 uv : TEXCOORD0;
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float2 texcoord : TEXCOORD0;
+            };
+
+            Varyings Vertex(Attributes input)
+            {
+                Varyings output;
+
+                float4 pos = input.positionOS * 2.0f - 1.0f;
+                float2 uv = input.uv;
+
+                #if UNITY_UV_STARTS_AT_TOP
+                uv.y = 1 - uv.y;
+                #endif
+
+                // pos.z = UNITY_RAW_FAR_CLIP_VALUE;
+                output.positionCS = pos;
+                output.texcoord = uv;
+                return output;
+            }
+
+            half4 Fragment(Varyings input) : SV_TARGET
+            {
+                return LOAD_TEXTURE2D(_BlitTexture, input.positionCS.xy + int2(0, - _ScreenSize.y + _BlitTexture_TexelSize.w));
+            }
+            ENDHLSL
+        }
     }
 }

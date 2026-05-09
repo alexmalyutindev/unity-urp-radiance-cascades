@@ -64,8 +64,8 @@ namespace AlexMalyutinDev.RadianceCascades
             passData.FrameColor = resourceData.activeColorTexture;
             builder.UseTexture(passData.FrameColor);
 
-            var targetWidth = 2 * _radianceCascadesRenderingData.Cascade0Size.x;
-            var targetHeight = 2 * _radianceCascadesRenderingData.Cascade0Size.y;
+            var targetWidth = frameDesc.width >> 1;
+            var targetHeight = frameDesc.height >> 1;
             passData.TargetResolution = new Vector4(targetWidth, targetHeight);
             passData.TargetMipsCount = (int)Mathf.Log(targetHeight, 2);
 
@@ -85,7 +85,7 @@ namespace AlexMalyutinDev.RadianceCascades
             desc.name = "Temp";
             desc.width >>= 1;
             desc.height >>= 1;
-            desc.useMipMap = false;
+            // desc.useMipMap = false;
             passData.TempBuffer = builder.CreateTransientTexture(desc);
 
             builder.SetRenderFunc<PassData>(static (data, context) =>

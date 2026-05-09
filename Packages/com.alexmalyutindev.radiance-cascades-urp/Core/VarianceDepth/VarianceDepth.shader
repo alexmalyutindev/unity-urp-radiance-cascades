@@ -129,7 +129,7 @@ Shader "Hidden/VarianceDepth"
             HLSLPROGRAM
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                return BoxBlur3(input.uv, _BlurDirection);
+                return GaussianBlur3(input.uv, _BlurDirection);
             }
             ENDHLSL
         }

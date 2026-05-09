@@ -134,18 +134,18 @@ void IntegrateDepthSector(
     }
 }
 
-half4 ComputeProbeRadiance(
+half4 RayTracing_TrapezoidIntegration(
     float2 probeMinMaxDepth,
     float2 probeCenterUV,
     float2 rayDirection,
     float2 range,
     float4 outputSizeTexel,
     float cascadePower,
-    out half4x4 minProbeRad,
-    out half4x4 maxProbeRad
+    out half4x4 nearSectorRadiance,
+    out half4x4 farSectorRadiance
 )
 {
-    const float depthThickness = 3.0f;
+    const float depthThickness = 2.0f;
     const float stepSize = _RayScale;
 
     IntegrationSector minSector = PrepareSector(cascadePower);
@@ -163,9 +163,9 @@ half4 ComputeProbeRadiance(
     UNITY_LOOP
     for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)
     {
-        float2 rayUV = probeCenterUV + max(0.01f, rayStep) * directionUV;
+        float2 rayUV = probeCenterUV + max(0.1f, rayStep) * directionUV;
 
-        if (any(rayUV > 1 || rayUV < 0)) break;
+        if (any(rayUV > 1.0f || rayUV < 0.0f)) break;
 
         float2 depthMoments = GetDepthMoments(rayUV);
         float4 directLight = float4(GetSceneLighting(rayUV), -1.0f);
@@ -194,8 +194,8 @@ half4 ComputeProbeRadiance(
         );
     }
 
-    minProbeRad = minSector.color;
-    maxProbeRad = maxSector.color;
+    nearSectorRadiance = minSector.color;
+    farSectorRadiance = maxSector.color;
     return 0;
 }
 

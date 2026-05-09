@@ -22,8 +22,8 @@ namespace AlexMalyutinDev.RadianceCascades
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            RenderCascades(renderGraph, frameData, out var sh);
-            CombineCascades(renderGraph, frameData, sh);
+            RenderCascades(renderGraph, frameData, out var cascades, out var sh);
+            CombineCascades(renderGraph, frameData, cascades, sh);
         }
 
         private class PassData
@@ -49,7 +49,9 @@ namespace AlexMalyutinDev.RadianceCascades
             public TextureHandle VarianceDepth;
         }
 
-        private void RenderCascades(RenderGraph renderGraph, ContextContainer frameData, out TextureHandle radianceSH)
+        private void RenderCascades(RenderGraph renderGraph, ContextContainer frameData, 
+            out TextureHandle radianceCascades, out TextureHandle radianceSH
+        )
         {
             var cameraData = frameData.Get<UniversalCameraData>();
             var resourceData = frameData.Get<UniversalResourceData>();
@@ -108,7 +110,8 @@ namespace AlexMalyutinDev.RadianceCascades
                 desc.width, desc.height,
                 1.0f / desc.width, 1.0f / desc.height
             );
-            passData.Cascades = builder.CreateTransientTexture(desc);
+            passData.Cascades = renderGraph.CreateTexture(desc);
+            builder.UseTexture(passData.Cascades, AccessFlags.Write);
 
             desc.name = "RadianceSH";
             desc.width = cascadeWidth / 2;
@@ -121,6 +124,7 @@ namespace AlexMalyutinDev.RadianceCascades
             builder.UseTexture(passData.RadianceSH, AccessFlags.Write);
 
             // TODO: Refactor!
+            radianceCascades = passData.Cascades;
             radianceSH = passData.RadianceSH;
 
             builder.SetRenderFunc<PassData>(static (data, context) =>
@@ -159,6 +163,7 @@ namespace AlexMalyutinDev.RadianceCascades
             public UniversalCameraData CameraData;
 
             public TextureHandle MinMaxDepth;
+            public TextureHandle RadianceCascades;
             public TextureHandle RadianceSH;
 
             public TextureHandle FrameColor;
@@ -166,7 +171,9 @@ namespace AlexMalyutinDev.RadianceCascades
             public TextureHandle FrameNormals;
         }
 
-        private void CombineCascades(RenderGraph renderGraph, ContextContainer frameData, TextureHandle radianceSH)
+        private void CombineCascades(RenderGraph renderGraph, ContextContainer frameData, 
+            in TextureHandle radianceCascades, in TextureHandle radianceSH
+        )
         {
             var cameraData = frameData.Get<UniversalCameraData>();
             var resourceData = frameData.Get<UniversalResourceData>();
@@ -185,6 +192,8 @@ namespace AlexMalyutinDev.RadianceCascades
             passData.FrameDepth = resourceData.cameraDepth;
             builder.UseTexture(passData.FrameDepth);
 
+            passData.RadianceCascades = radianceCascades;
+            builder.UseTexture(passData.RadianceCascades);
             passData.RadianceSH = radianceSH;
             builder.UseTexture(passData.RadianceSH);
 
@@ -194,6 +203,9 @@ namespace AlexMalyutinDev.RadianceCascades
             builder.SetRenderAttachment(resourceData.activeColorTexture, 0);
             builder.SetRenderFunc<CombinePassData>(static (data, context) =>
             {
+                // TEST: Preview cascades blit.
+                // BlitUtils.BlitTexture(context.cmd, data.RadianceCascades, data.Material, 5);
+
                 context.cmd.SetGlobalMatrix("_ViewToWorld", data.CameraData.GetViewMatrix().inverse);
                 context.cmd.SetGlobalTexture("_MinMaxDepth", data.MinMaxDepth);
 
