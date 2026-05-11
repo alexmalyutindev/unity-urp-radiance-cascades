@@ -138,9 +138,11 @@ namespace AlexMalyutinDev.RadianceCascades
                 Mathf.FloorToInt(cascade0Size.x / (1 << cascadeLevel)),
                 Mathf.FloorToInt(cascade0Size.y / (1 << cascadeLevel))
             );
+            var probesCountX = Mathf.FloorToInt(cascade0ProbesCount.x / (1 << cascadeLevel));
+            var probesCountY = Mathf.FloorToInt(cascade0ProbesCount.y / (1 << cascadeLevel));
             Vector4 probesCount = new Vector4(
-                Mathf.FloorToInt(cascade0ProbesCount.x / (1 << cascadeLevel)),
-                Mathf.FloorToInt(cascade0ProbesCount.y / (1 << cascadeLevel))
+                probesCountX, probesCountY,
+                1.0f / probesCountX, 1.0f / probesCountY
             );
             return (size, probesCount);
         }

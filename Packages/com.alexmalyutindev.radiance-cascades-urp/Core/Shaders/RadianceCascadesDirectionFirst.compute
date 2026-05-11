@@ -10,7 +10,7 @@
 // Input
 float _RayScale;
 float _CascadeLevel;
-float2 _ProbesCount;
+float4 _ProbesCount;
 // _ProbesCount + Padding
 float2 _CascadeSize;
 
@@ -153,13 +153,14 @@ float4 LoadLowRadiance(
         bilinearWeights.x * bilinearWeights.y
     );
 
-    // 02----12----22----32----42----42
+    // ---02----12----22----32----42----42
     // | D01 |     | E11 |     | F21 |
-    // 02----12----22----32----42----42
+    // ---02----12----22----32----42----42
     // |     |     |     |     |     |
-    // 01----11----21----31----41----41
+    // ---01----11----21----31----41----41
     // | A00 |     | B10 |     | C20 |
-    // 00----10----20----30----40----40
+    // ---00----10----20----30----40----40
+    //    |     |     |     |     |     |
     int2 lowCascadeCoords = coords / 2;
     lowCascadeCoords = floor(lowCascadeCoords / float2(lowCascadeSize)) * lowCascadeSize;
     lowCascadeCoords.x *= 2;
@@ -221,14 +222,14 @@ float4 LoadLowRadiance(
 [numthreads(8, 4, 1)]
 void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 {
-    int2 coords = int2(id.xy);
+    uint2 coords = int2(id.xy);
     // NOTE: Offsetting coords to top
-    int2 targetCoords = int2(id.x, id.y + _CascadeSize.y * 7);
+    uint2 targetCoords = int2(id.x, id.y + 7 * floor(_CascadeSize.y));
 
     // NOTE: On each cascade we compute N screen oriented rays.
-    int2 probeCenterCoord = coords % int2(_CascadeSize);
+    uint2 probeCenterCoord = coords % int2(_CascadeSize);
     // NOTE: Drop threads outside of cascade probes count.
-    if (any(probeCenterCoord.xy >= int2(_ProbesCount.xy)))
+    if (any(probeCenterCoord.xy >= uint2(_ProbesCount.xy)))
     {
         UNITY_UNROLL for (int depthRayId = 0; depthRayId < 4; depthRayId++)
         {
@@ -238,8 +239,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
         return;
     }
 
-    float2 probeCenterUV = saturate(float2(probeCenterCoord + 0.5f) / _ProbesCount);
-
+    float2 probeCenterUV = saturate(float2(probeCenterCoord + 0.5f) * _ProbesCount.zw);
     const float cascadeLevel = _CascadeLevel;
     float2 probeMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, probeCenterCoord, _CascadeLevel + 1).xy;
     float2 rayDirectionUV;
@@ -258,7 +258,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
     // TODO: Check what ray length and range should be!
     int2 range = Ranges4[cascadeLevel] + 4;
-    float4 outputSizeTexel = float4(_ProbesCount, 1.0f / (_ProbesCount)); 
+    float4 outputSizeTexel = _ProbesCount; // float4(_ProbesCount.xy, 1.0f / (_ProbesCount.xy)); 
     float cascadeExponent = 0.25f * pow(2.0f, _CascadeLevel);
 
     half4 test = RayTracing_TrapezoidIntegration(
@@ -307,6 +307,10 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
             rad.a = saturate(rad.a);
             farSectorRadiance[depthRayId].rgb = rad.rgb + lowFarProbeRadiance.rgb * rad.a;
             farSectorRadiance[depthRayId].a = rad.a * saturate(lowFarProbeRadiance.a);
+
+
+            // nearSectorRadiance[depthRayId] = lowNearProbeRadiance;
+            // farSectorRadiance[depthRayId] = lowFarProbeRadiance;
         }
     }
 
@@ -336,8 +340,8 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
     // TODO: _CascadeSize - should be probes count WITH PADDING on the CURRENT cascade!!!
     // TODO: _ProbesCount - should be probes count on the CURRENT cascade!!!
     // NOTE: _ProbesCount is probes count of low cascade!
-    int2 lowCascadeSize = _CascadeSize / 2;
-    int2 lowProbesCount = _ProbesCount / 2;
+    int2 lowCascadeSize = _CascadeSize.xy / 2;
+    int2 lowProbesCount = _ProbesCount.xy / 2;
     int2 lowProbeId = coords;
 
     // | c | d |
@@ -350,7 +354,7 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
         int2(0, 1) * step(lowProbeId.y, lowProbesCount.y), 
         int2(1, 1) * step(lowProbeId, lowProbesCount), 
     };
-    int2 lowProbeLocalId = clamp(floor((lowProbeId - 1) * 0.5f), 0, _ProbesCount / 2 - 1);
+    int2 lowProbeLocalId = clamp(floor((lowProbeId - 1) * 0.5f), 0, _ProbesCount.xy / 2 - 1);
 
     float2 bilinearOffsets = saturate(fmod((lowProbeId - 1) * 0.5f, 1.0f) + 0.25f);
     float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);

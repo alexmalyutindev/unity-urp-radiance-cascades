@@ -102,7 +102,7 @@ namespace AlexMalyutinDev.RadianceCascades
             var desc = new TextureDesc(cascadeWidth, cascadeHeight)
             {
                 name = "RadianceCascades",
-                colorFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGBFloat, false),
+                format = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGBFloat, false),
                 enableRandomWrite = true,
                 clearBuffer = true, // NOTE: TESTING!!! Remove after!
             };
@@ -204,15 +204,20 @@ namespace AlexMalyutinDev.RadianceCascades
             builder.SetRenderFunc<CombinePassData>(static (data, context) =>
             {
                 // TEST: Preview cascades blit.
-                // BlitUtils.BlitTexture(context.cmd, data.RadianceCascades, data.Material, 5);
+                if (false)
+                {
+                    BlitUtils.BlitTexture(context.cmd, data.RadianceCascades, data.Material, 5);
+                }
+                else
+                {
+                    context.cmd.SetGlobalMatrix("_ViewToWorld", data.CameraData.GetViewMatrix().inverse);
+                    context.cmd.SetGlobalTexture("_MinMaxDepth", data.MinMaxDepth);
 
-                context.cmd.SetGlobalMatrix("_ViewToWorld", data.CameraData.GetViewMatrix().inverse);
-                context.cmd.SetGlobalTexture("_MinMaxDepth", data.MinMaxDepth);
-
-                context.cmd.SetGlobalTexture("_GBuffer0", data.FrameColor);
-                context.cmd.SetGlobalTexture("_GBuffer2", data.FrameNormals);
-                context.cmd.SetGlobalTexture("_CameraDepthTexture", data.FrameDepth);
-                BlitUtils.BlitTexture(context.cmd, data.RadianceSH, data.Material, 4);
+                    context.cmd.SetGlobalTexture("_GBuffer0", data.FrameColor);
+                    context.cmd.SetGlobalTexture("_GBuffer2", data.FrameNormals);
+                    context.cmd.SetGlobalTexture("_CameraDepthTexture", data.FrameDepth);
+                    BlitUtils.BlitTexture(context.cmd, data.RadianceSH, data.Material, 4);
+                }
             });
         }
 

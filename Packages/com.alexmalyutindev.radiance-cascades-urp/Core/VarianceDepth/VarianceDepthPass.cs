@@ -90,7 +90,7 @@ namespace AlexMalyutinDev.RadianceCascades
 
                 var width = data.TargetResolution.x;
                 var height = data.TargetResolution.y;
-                for (int mipLevel = 0; mipLevel < data.TargetMipsCount - 2; mipLevel++)
+                for (int mipLevel = 0; mipLevel < data.TargetMipsCount; mipLevel++)
                 {
                     cmd.SetRenderTarget(data.IntermediateDownsampleBuffer, mipLevel);
                     cmd.SetGlobalInteger("_InputMipLevel", mipLevel);

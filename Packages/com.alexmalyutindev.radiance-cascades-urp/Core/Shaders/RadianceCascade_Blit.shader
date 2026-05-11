@@ -698,9 +698,11 @@ Shader "Hidden/RadianceCascade/Blit"
                 return output;
             }
 
-            half4 Fragment(Varyings input) : SV_TARGET
+            float4 Fragment(Varyings input) : SV_TARGET
             {
-                return LOAD_TEXTURE2D(_BlitTexture, input.positionCS.xy + int2(0, - _ScreenSize.y + _BlitTexture_TexelSize.w));
+                int2 coords = floor(input.positionCS.xy);
+                coords.y += round(_BlitTexture_TexelSize.w) - round(_ScreenSize.y);
+                return LOAD_TEXTURE2D(_BlitTexture, coords);
             }
             ENDHLSL
         }

@@ -259,7 +259,7 @@ Shader "Hidden/BlurredColorBuffer"
             half3 Fragment(Varyings input) : SV_TARGET
             {
                 float2 offset = _OffsetDirection * _InputSizeTexel.zw;
-                return BoxBlur3x3(input.uv, offset);
+                return GausianBlur5x5(input.uv, offset);
             }
             ENDHLSL
         }
