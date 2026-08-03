@@ -34,6 +34,9 @@ MonoBehaviour:
   highQualityFiltering:
     m_OverrideState: 0
     m_Value: 0
+  filter:
+    m_OverrideState: 0
+    m_Value: 0
   downscale:
     m_OverrideState: 0
     m_Value: 0
@@ -143,7 +146,7 @@ MonoBehaviour:
     m_Value: 1
   RayScale:
     m_OverrideState: 1
-    m_Value: 0.5
+    m_Value: 0.1
   UseSH:
     m_OverrideState: 1
     m_Value: 1
