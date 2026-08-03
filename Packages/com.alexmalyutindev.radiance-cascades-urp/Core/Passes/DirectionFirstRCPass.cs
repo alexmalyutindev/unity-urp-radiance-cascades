@@ -31,6 +31,7 @@ namespace AlexMalyutinDev.RadianceCascades
             public RadianceCascadesDirectionFirstCS Compute;
             public float RayLength;
 
+            public Vector2Int ScreenSize;
             public Vector4 Cascade0Size;
             public Vector4 Cascade0ProbesCount;
 
@@ -66,6 +67,8 @@ namespace AlexMalyutinDev.RadianceCascades
             builder.AllowPassCulling(false);
 
             passData.CameraData = cameraData;
+            passData.ScreenSize = new Vector2Int(cameraData.scaledWidth, cameraData.scaledHeight);
+
             passData.RayLength = settings.RayScale.value;
 
             passData.FrameDepth = resourceData.activeDepthTexture;
@@ -82,7 +85,7 @@ namespace AlexMalyutinDev.RadianceCascades
             passData.Compute = _compute;
 
             int lastCascadeScale = 2 << 5;
-            float lastCascadeScaleRcp = 1.0f / (2 << 5);
+            float lastCascadeScaleRcp = 1.0f / lastCascadeScale;
             int cascade0WidthWithPadding = Mathf.CeilToInt(cameraData.scaledWidth / 4.0f * lastCascadeScaleRcp) * lastCascadeScale;
             int cascade0HeightWithPadding = Mathf.CeilToInt(cameraData.scaledHeight / 4.0f * lastCascadeScaleRcp) * lastCascadeScale;
             passData.Cascade0Size = new Vector4(
@@ -140,7 +143,8 @@ namespace AlexMalyutinDev.RadianceCascades
                     data.RayLength,
                     ref data.Cascades,
                     data.Cascade0Size,
-                    data.Cascade0ProbesCount
+                    data.Cascade0ProbesCount,
+                    data.ScreenSize
                 );
 
                 data.Compute.CombineSH(

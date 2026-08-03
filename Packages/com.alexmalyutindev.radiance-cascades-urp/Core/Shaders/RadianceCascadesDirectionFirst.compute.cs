@@ -20,8 +20,7 @@ namespace AlexMalyutinDev.RadianceCascades
             _combineSHKernel = _compute.FindKernel("CombineSH");
         }
 
-        public void RenderMerge(
-            ComputeCommandBuffer cmd,
+        public void RenderMerge(ComputeCommandBuffer cmd,
             ref UniversalCameraData cameraData,
             TextureHandle depth,
             TextureHandle minMaxDepth,
@@ -31,7 +30,8 @@ namespace AlexMalyutinDev.RadianceCascades
             float rayScale,
             ref TextureHandle target,
             Vector4 cascade0Size,
-            Vector4 cascade0ProbesCount
+            Vector4 cascade0ProbesCount,
+            Vector2Int screenSize
         )
         {
             var kernel = _renderAndMergeKernel;
@@ -68,11 +68,11 @@ namespace AlexMalyutinDev.RadianceCascades
             {
                 cmd.SetComputeFloatParam(_compute, "_CascadeLevel", cascadeLevel);
 
-                var (cascadeSize, probesCount) = GetCascadeSizeAndProbesCount(cascade0Size, cascade0ProbesCount, cascadeLevel);
+                var (cascadeSize, probesCount) = GetCascadeSizeAndProbesCount(cascade0Size, cascade0ProbesCount, screenSize, cascadeLevel);
                 cmd.SetComputeVectorParam(_compute, "_CascadeSize", cascadeSize);
                 cmd.SetComputeVectorParam(_compute, "_ProbesCount", probesCount);
 
-                var (upperCascadeSize, upperProbesCount) = GetCascadeSizeAndProbesCount(cascade0Size, cascade0ProbesCount, cascadeLevel + 1);
+                var (upperCascadeSize, upperProbesCount) = GetCascadeSizeAndProbesCount(cascade0Size, cascade0ProbesCount, screenSize, cascadeLevel + 1);
                 cmd.SetComputeVectorParam(_compute, "_UpperCascadeSize", upperCascadeSize);
                 cmd.SetComputeVectorParam(_compute, "_UpperProbesCount", upperProbesCount);
 
@@ -132,14 +132,19 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.EndSample("RadianceCascade.CombineSH");
         }
 
-        private (Vector4, Vector4) GetCascadeSizeAndProbesCount(Vector4 cascade0Size, Vector4 cascade0ProbesCount, int cascadeLevel)
+        private (Vector4, Vector4) GetCascadeSizeAndProbesCount(
+            Vector4 cascade0Size, 
+            Vector4 cascade0ProbesCount,
+            Vector2Int screenSize,
+            int cascadeLevel
+        )
         {
             var size = new Vector4(
                 Mathf.FloorToInt(cascade0Size.x / (1 << cascadeLevel)),
                 Mathf.FloorToInt(cascade0Size.y / (1 << cascadeLevel))
             );
-            var probesCountX = Mathf.FloorToInt(cascade0ProbesCount.x / (1 << cascadeLevel));
-            var probesCountY = Mathf.FloorToInt(cascade0ProbesCount.y / (1 << cascadeLevel));
+            var probesCountX = Mathf.Max(1, screenSize.x >> (cascadeLevel + 2)); // Mathf.FloorToInt(cascade0ProbesCount.x / (1 << cascadeLevel));
+            var probesCountY = Mathf.Max(1, screenSize.y >> (cascadeLevel + 2)); // Mathf.FloorToInt(cascade0ProbesCount.y / (1 << cascadeLevel));
             Vector4 probesCount = new Vector4(
                 probesCountX, probesCountY,
                 1.0f / probesCountX, 1.0f / probesCountY

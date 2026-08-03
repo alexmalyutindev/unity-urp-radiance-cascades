@@ -86,11 +86,11 @@ static const int2 Ranges4[6] =
 
 float2 GetDepthMoments(float2 uv)
 {
-    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_VarianceDepth, uv, _CascadeLevel).xy;
+    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_VarianceDepth, uv, _CascadeLevel + 1).xy;
 }
 float3 GetSceneLighting(float2 uv)
 {
-    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_BlurredColor, uv, _CascadeLevel + 2).rgb;
+    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_BlurredColor, uv, _CascadeLevel + 1).rgb;
 }
 float3 GetSceneLighting(float2 uv, int lod)
 {
@@ -154,14 +154,14 @@ float4 LoadLowRadiance(
     );
 
     // ---02----12----22----32----42----42
-    // | D01 |     | E11 |     | F21 |
+    //    | D01 |     | E11 |     | F21 |
     // ---02----12----22----32----42----42
-    // |     |     |     |     |     |
+    //    |     |     |     |     |     |
     // ---01----11----21----31----41----41
-    // | A00 |     | B10 |     | C20 |
+    //    | A00 |     | B10 |     | C20 |
     // ---00----10----20----30----40----40
     //    |     |     |     |     |     |
-    int2 lowCascadeCoords = coords / 2;
+    int2 lowCascadeCoords = floor(coords * 0.5f);
     lowCascadeCoords = floor(lowCascadeCoords / float2(lowCascadeSize)) * lowCascadeSize;
     lowCascadeCoords.x *= 2;
     lowCascadeCoords.y += lowCascadeSize.y * 4;
@@ -258,7 +258,10 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
     // TODO: Check what ray length and range should be!
     int2 range = Ranges4[cascadeLevel] + 4;
-    float4 outputSizeTexel = _ProbesCount; // float4(_ProbesCount.xy, 1.0f / (_ProbesCount.xy)); 
+    uint levels;
+    float width, height;
+    _BlurredColor.GetDimensions(_CascadeLevel + 2, width, height, levels);
+    float4 outputSizeTexel = float4(width, height, 1.0f / width, 1.0f / height); // _ProbesCount; // float4(_ProbesCount.xy, 1.0f / (_ProbesCount.xy)); 
     float cascadeExponent = 0.25f * pow(2.0f, _CascadeLevel);
 
     half4 test = RayTracing_TrapezoidIntegration(
