@@ -107,14 +107,14 @@ namespace AlexMalyutinDev.RadianceCascades
                 name = "RadianceCascades",
                 format = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGBFloat, false),
                 enableRandomWrite = true,
-                clearBuffer = true, // NOTE: TESTING!!! Remove after!
+                clearBuffer = false, // NOTE: TESTING!!! Remove after!
             };
             passData.CascadesSizeTexel = new Vector4(
                 desc.width, desc.height,
                 1.0f / desc.width, 1.0f / desc.height
             );
             passData.Cascades = renderGraph.CreateTexture(desc);
-            builder.UseTexture(passData.Cascades, AccessFlags.Write);
+            builder.UseTexture(passData.Cascades, AccessFlags.ReadWrite);
 
             desc.name = "RadianceSH";
             desc.width = cascadeWidth / 2;

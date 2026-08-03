@@ -12,10 +12,10 @@ namespace InternalBridge
             BindingFlags.NonPublic | BindingFlags.Instance
         );
 
-        public static RTHandle GetDepthTexture(this UniversalRenderer renderer)
-        {
-            return renderer.m_DepthTexture;
-        }
+        // public static RTHandle GetDepthTexture(this UniversalRenderer renderer)
+        // {
+        //     return renderer.m_DepthTexture;
+        // }
 
         // TODO: Use with [UnsafeAccessor] when Unity start supporting .NET8
         public static RTHandle GetOpaqueTexture(this ScriptableRenderer renderer)

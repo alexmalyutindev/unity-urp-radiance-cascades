@@ -196,7 +196,7 @@ half4 RayTracing_TrapezoidIntegration(
 
     nearSectorRadiance = minSector.color;
     farSectorRadiance = maxSector.color;
-    return 0;
+    return float4(maxProbeCenterVS, 0.0f);
 }
 
 #endif
