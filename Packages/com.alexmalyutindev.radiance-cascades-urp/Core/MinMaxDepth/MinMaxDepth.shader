@@ -27,7 +27,7 @@ Shader "Hidden/MinMaxDepth"
                 float2 uv = input.positionCS.xy * _BlitTexture_TexelSize.xy * 2.0f;
                 float4 depths = _BlitTexture.GatherRed(sampler_PointClamp, uv);
                 depths = LinearEyeDepth(depths, _ZBufferParams);
-                return float2(Min4(depths),Max4(depths));
+                return float2(Min4(depths), Max4(depths));
             }
             ENDHLSL
         }
@@ -45,9 +45,7 @@ Shader "Hidden/MinMaxDepth"
 
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                float4 minDepth = _BlitTexture.GatherRed(sampler_PointClamp, input.uv, _InputMipLevel);
-                float4 maxDepth = _BlitTexture.GatherGreen(sampler_PointClamp, input.uv, _InputMipLevel);
-                return float2(Min4(minDepth), Max4(maxDepth));
+                return LoadDepthMinMax(floor(input.positionCS.xy) * 2, _InputMipLevel);
             }
             ENDHLSL
         }

@@ -134,6 +134,9 @@ void IntegrateDepthSector(
     }
 }
 
+float2 GetDepthMoments(float2 uv);
+float3 GetSceneLighting(float2 uv);
+
 half4 RayTracing_TrapezoidIntegration(
     float2 probeMinMaxDepth,
     float2 probeCenterUV,
@@ -163,7 +166,7 @@ half4 RayTracing_TrapezoidIntegration(
     UNITY_LOOP
     for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)
     {
-        float2 rayUV = probeCenterUV + max(0.2f, rayStep) * directionUV;
+        float2 rayUV = probeCenterUV + (rayStep + 0.5f) * directionUV;
 
         if (any(rayUV > 1.0f || rayUV < 0.0f)) break;
 

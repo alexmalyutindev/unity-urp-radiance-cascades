@@ -45,25 +45,25 @@ float4 LinearEyeDepth(float4 depth, float4 zBufferParam)
 }
 
 #if defined(SINGLE_CHANNEL)
-float2 LoadDepth(int2 coord, int _InputMipLevel)
+float2 LoadDepth(int2 coord, int mipLevel)
 {
     coord = min(coord, int2(_InputResolution) - 1);
-    return LOAD_TEXTURE2D_LOD(_BlitTexture, coord, _InputMipLevel).r;
+    return LOAD_TEXTURE2D_LOD(_BlitTexture, coord, mipLevel).r;
 }
 #else
-float2 LoadDepth(int2 coord, int _InputMipLevel)
+float2 LoadDepth(int2 coord, int mipLevel)
 {
     // coord = min(coord, int2(_InputResolution) - 1);
-    return LOAD_TEXTURE2D_LOD(_BlitTexture, coord, _InputMipLevel).rg;
+    return LOAD_TEXTURE2D_LOD(_BlitTexture, coord, mipLevel).rg;
 }
 #endif
 
-float2 LoadDepthMinMax(int2 coord, int _InputMipLevel)
+float2 LoadDepthMinMax(int2 coord, int mipLevel)
 {
-    float2 a = LoadDepth(coord, _InputMipLevel);
-    float2 b = LoadDepth(coord + int2(1, 0), _InputMipLevel);
-    float2 c = LoadDepth(coord + int2(0, 1), _InputMipLevel);
-    float2 d = LoadDepth(coord + int2(1, 1), _InputMipLevel);
+    float2 a = LoadDepth(coord, mipLevel);
+    float2 b = LoadDepth(coord + int2(1, 0), mipLevel);
+    float2 c = LoadDepth(coord + int2(0, 1), mipLevel);
+    float2 d = LoadDepth(coord + int2(1, 1), mipLevel);
 
     return float2(
         min(min(a.x, b.x), min(c.x, d.x)),
@@ -71,12 +71,12 @@ float2 LoadDepthMinMax(int2 coord, int _InputMipLevel)
     );
 }
 
-float4 GatherDepth(int2 coord, int _InputMipLevel)
+float4 GatherDepth(int2 coord, int mipLevel)
 {
-    float a = LoadDepth(coord, _InputMipLevel);
-    float b = LoadDepth(coord + int2(1, 0), _InputMipLevel);
-    float c = LoadDepth(coord + int2(0, 1), _InputMipLevel);
-    float d = LoadDepth(coord + int2(1, 1), _InputMipLevel);
+    float a = LoadDepth(coord, mipLevel);
+    float b = LoadDepth(coord + int2(1, 0), mipLevel);
+    float c = LoadDepth(coord + int2(0, 1), mipLevel);
+    float d = LoadDepth(coord + int2(1, 1), mipLevel);
 
     return float4(a, b, c, d);
 }

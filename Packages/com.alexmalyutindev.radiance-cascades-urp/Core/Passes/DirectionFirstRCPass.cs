@@ -132,32 +132,36 @@ namespace AlexMalyutinDev.RadianceCascades
 
             builder.SetRenderFunc<PassData>(static (data, context) =>
             {
-                data.Compute.RenderMerge(
-                    context.cmd,
-                    ref data.CameraData,
-                    data.FrameDepth,
-                    data.MinMaxDepth,
-                    data.VarianceDepth,
-                    data.VarianceDepthSizeTexel,
-                    data.BlurredColor,
-                    data.RayLength,
-                    ref data.Cascades,
-                    data.Cascade0Size,
-                    data.Cascade0ProbesCount,
-                    data.ScreenSize
-                );
+                var renderArgs = new RadianceCascadesDirectionFirstCS.RenderMergeArgs
+                {
+                    CameraData = data.CameraData,
+                    Depth = data.FrameDepth,
+                    MinMaxDepth = data.MinMaxDepth,
+                    VarianceDepth = data.VarianceDepth,
+                    VarianceDepthSizeTexel = data.VarianceDepthSizeTexel,
+                    BlurredColor = data.BlurredColor,
+                    RayScale = data.RayLength,
+                    Target = data.Cascades,
+                    Cascade0Size = data.Cascade0Size,
+                    Cascade0ProbesCount = data.Cascade0ProbesCount,
+                    ScreenSize = data.ScreenSize
+                };
 
-                data.Compute.CombineSH(
-                    context.cmd,
-                    ref data.CameraData,
-                    data.Cascades,
-                    data.CascadesSizeTexel,
-                    data.MinMaxDepth,
-                    data.VarianceDepth,
-                    ref data.RadianceSH,
-                    data.Cascade0Size,
-                    data.Cascade0ProbesCount
-                );
+                data.Compute.RenderMerge(context.cmd, ref renderArgs);
+
+                var combineArgs = new RadianceCascadesDirectionFirstCS.CombineSHArgs
+                {
+                    CameraData = data.CameraData,
+                    Cascades = data.Cascades,
+                    CascadesSizeTexel = data.CascadesSizeTexel,
+                    MinMaxDepth = data.MinMaxDepth,
+                    VarianceDepth = data.VarianceDepth,
+                    RadianceSH = data.RadianceSH,
+                    CascadeProbesCountWithPadding = data.Cascade0Size,
+                    CascadeProbesCount = data.Cascade0ProbesCount
+                };
+
+                data.Compute.CombineSH(context.cmd, ref combineArgs);
             });
         }
 
@@ -211,7 +215,7 @@ namespace AlexMalyutinDev.RadianceCascades
                 if (false)
                 {
                     BlitUtils.BlitTexture(context.cmd, data.RadianceCascades, data.Material, 5);
-                    BlitUtils.BlitTexture(context.cmd, data.RadianceSH, data.Material, 5);
+                    // BlitUtils.BlitTexture(context.cmd, data.RadianceSH, data.Material, 5);
                 }
                 else
                 {
