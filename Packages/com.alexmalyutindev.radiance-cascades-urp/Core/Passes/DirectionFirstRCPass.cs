@@ -211,6 +211,7 @@ namespace AlexMalyutinDev.RadianceCascades
                 if (false)
                 {
                     BlitUtils.BlitTexture(context.cmd, data.RadianceCascades, data.Material, 5);
+                    BlitUtils.BlitTexture(context.cmd, data.RadianceSH, data.Material, 5);
                 }
                 else
                 {

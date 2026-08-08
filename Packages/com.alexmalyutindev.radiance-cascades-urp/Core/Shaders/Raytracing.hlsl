@@ -145,7 +145,7 @@ half4 RayTracing_TrapezoidIntegration(
     out half4x4 farSectorRadiance
 )
 {
-    const float depthThickness = 10.0f;
+    const float depthThickness = 40.0f;
     const float stepSize = _RayScale;
 
     IntegrationSector minSector = PrepareSector(cascadePower);
@@ -163,7 +163,7 @@ half4 RayTracing_TrapezoidIntegration(
     UNITY_LOOP
     for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)
     {
-        float2 rayUV = probeCenterUV + max(0.1f, rayStep) * directionUV;
+        float2 rayUV = probeCenterUV + max(0.2f, rayStep) * directionUV;
 
         if (any(rayUV > 1.0f || rayUV < 0.0f)) break;
 

@@ -58,6 +58,10 @@ Shader "Hidden/VarianceDepth"
             return (momentsC0 + momentsL0 + momentsR0) * (1.0f / 3.0f);
         }
         
+        // 3-Tap Symmetric Weights (Sum up to 1.0)
+        static const float CenterWeight = 0.520500f;
+        static const float OuterWeight  = 0.239750f;
+
         float2 GaussianBlur3(float2 uv, float2 offsetDirection)
         {
             float2 offset = _InputTexelSize.xy * offsetDirection;
@@ -65,8 +69,8 @@ Shader "Hidden/VarianceDepth"
             float2 momentsC0 = SAMPLE_INPUT_TEX_LOD(uv, _InputMipLevel);
             float2 momentsR0 = SAMPLE_INPUT_TEX_LOD(uv + offset, _InputMipLevel);
 
-            return momentsC0 * 2.0f / 4.0f
-                + (momentsL0 + momentsR0) * 1.0f / 4.0f;
+            return momentsC0 * CenterWeight
+                + (momentsL0 + momentsR0) * OuterWeight;
         }
 
         float2 GaussianBlur5(float2 uv, float2 offsetDirection)
@@ -91,7 +95,7 @@ Shader "Hidden/VarianceDepth"
             HLSLPROGRAM
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                float depthRaw = SAMPLE_TEXTURE2D(_BlitTexture, sampler_LinearClamp, input.uv).r;
+                float depthRaw = SAMPLE_TEXTURE2D(_BlitTexture, sampler_PointClamp, input.uv).r;
                 float depth = LinearEyeDepth(depthRaw, _ZBufferParams);
                 return float2(depth, depth * depth);
             }

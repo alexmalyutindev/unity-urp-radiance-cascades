@@ -24,16 +24,10 @@ Shader "Hidden/MinMaxDepth"
 
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                int2 coord = floor(input.positionCS.xy) * 2;
-
-                float4 depths = GatherDepth(coord, _InputMipLevel);
+                float2 uv = input.positionCS.xy * _BlitTexture_TexelSize.xy * 2.0f;
+                float4 depths = _BlitTexture.GatherRed(sampler_PointClamp, uv);
                 depths = LinearEyeDepth(depths, _ZBufferParams);
-                float2 minMaxDepth = float2(
-                    min(depths.x, min(depths.y, min(depths.z, depths.w))),
-                    max(depths.x, max(depths.y, max(depths.z, depths.w)))
-                );
-
-                return minMaxDepth;
+                return float2(Min4(depths),Max4(depths));
             }
             ENDHLSL
         }
@@ -51,8 +45,9 @@ Shader "Hidden/MinMaxDepth"
 
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                int2 coord = floor(input.positionCS.xy) * 2;
-                return LoadDepthMinMax(coord, _InputMipLevel);
+                float4 minDepth = _BlitTexture.GatherRed(sampler_PointClamp, input.uv, _InputMipLevel);
+                float4 maxDepth = _BlitTexture.GatherGreen(sampler_PointClamp, input.uv, _InputMipLevel);
+                return float2(Min4(minDepth), Max4(maxDepth));
             }
             ENDHLSL
         }

@@ -63,7 +63,7 @@ namespace AlexMalyutinDev.RadianceCascades
 
             cmd.SetComputeFloatParam(_compute, "_RayScale", rayScale);
 
-            const int maxCascadeLevel = 5;
+            const int maxCascadeLevel = 4;
             for (int cascadeLevel = maxCascadeLevel; cascadeLevel >= 0; cascadeLevel--)
             {
                 cmd.SetComputeFloatParam(_compute, "_CascadeLevel", cascadeLevel);
@@ -117,6 +117,7 @@ namespace AlexMalyutinDev.RadianceCascades
             // TODO: Replace props names with ids!
             cmd.SetComputeVectorParam(_compute, "_ProbesCount", cascadeProbesCount * 2.0f);
             cmd.SetComputeVectorParam(_compute, "_CascadeSize", cascadeProbesCountWithPadding * 2.0f);
+            cmd.SetComputeVectorParam(_compute, "_UpperCascadeSize", cascadeProbesCountWithPadding);
 
             cmd.SetComputeMatrixParam(_compute, "_ViewToWorld", cameraData.GetViewMatrix().inverse);
 

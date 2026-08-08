@@ -29,6 +29,16 @@ Varyings Vertex(Attributes input)
     return output;
 }
 
+float Min4(float4 a)
+{
+    return min(min(a.x, a.y), min(a.z, a.w));
+}
+
+float Max4(float4 a)
+{
+    return max(max(a.x, a.y), max(a.z, a.w));
+}
+
 float4 LinearEyeDepth(float4 depth, float4 zBufferParam)
 {
     return 1.0 / (zBufferParam.z * depth + zBufferParam.w);

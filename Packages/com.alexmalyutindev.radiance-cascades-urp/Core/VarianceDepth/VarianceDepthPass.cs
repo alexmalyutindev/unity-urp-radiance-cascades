@@ -60,7 +60,7 @@ namespace AlexMalyutinDev.RadianceCascades
             passData.FrameDepth = resourceData.activeDepthTexture;
             builder.UseTexture(passData.FrameDepth);
 
-            var desc = new TextureDesc(frameDesc.width >> 1, frameDesc.height >> 1)
+            var desc = new TextureDesc(frameDesc.width, frameDesc.height)
             {
                 name = "VarianceDepth",
                 colorFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.RGFloat, false),

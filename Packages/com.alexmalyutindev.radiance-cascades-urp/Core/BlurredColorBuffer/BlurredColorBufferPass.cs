@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
@@ -72,7 +73,7 @@ namespace AlexMalyutinDev.RadianceCascades
             var desc = new TextureDesc(targetWidth, targetHeight)
             {
                 name = "BlurredColorBuffer",
-                format = frameDesc.graphicsFormat,
+                format = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.RGB111110Float, false),
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Bilinear,
                 useMipMap = true,
