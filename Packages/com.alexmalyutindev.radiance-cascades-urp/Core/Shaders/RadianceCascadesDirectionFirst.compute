@@ -292,6 +292,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
     // TODO: Check what ray length and range should be!
     int2 range = Ranges2[_CascadeLevel];
+    range.x = 1.0f;
 
     uint levels;
     float width, height;

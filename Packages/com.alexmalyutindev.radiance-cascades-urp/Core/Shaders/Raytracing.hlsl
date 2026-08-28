@@ -110,7 +110,7 @@ void IntegrateDepthSector(
     float nearAngle = dot(probeNormalVS, normalize(occluderNearVS - probeCenterVS)) * 0.5f + 0.5f;
     float farAngle = dot(probeNormalVS, normalize(occluderFarVS - probeCenterVS)) * 0.5f + 0.5f;
     float meanAngle = dot(probeNormalVS, normalize(occluderMeanVS - probeCenterVS)) * 0.5f + 0.5f;
-    float sigma = max(MY_FLT_EPS, nearAngle - meanAngle);
+    float sigma = max(MY_FLT_EPS, meanAngle - nearAngle);
     
     Trapezoid trapezoid = GetVarianceTrapezoid(float2(nearAngle, farAngle), sigma);
 
@@ -149,7 +149,7 @@ half4 RayTracing_TrapezoidIntegration(
     out half4x4 farSectorRadiance
 )
 {
-    const float depthThickness = 40.0f;
+    const float depthThickness = 5.0f;
     const float stepSize = _RayScale;
 
     IntegrationSector minSector = PrepareSector(cascadePower);

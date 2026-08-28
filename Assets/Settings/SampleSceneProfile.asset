@@ -146,7 +146,7 @@ MonoBehaviour:
     m_Value: 1
   RayScale:
     m_OverrideState: 1
-    m_Value: 2
+    m_Value: 1
   UseSH:
     m_OverrideState: 1
     m_Value: 1
