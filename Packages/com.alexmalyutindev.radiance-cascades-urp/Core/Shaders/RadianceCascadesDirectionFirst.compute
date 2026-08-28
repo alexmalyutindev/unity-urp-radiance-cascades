@@ -1,7 +1,7 @@
 #pragma kernel RenderAndMergeCascade
 #pragma kernel CombineSH
 
-#include "Common.hlsl"
+#include "Packages/com.alexmalyutindev.radiance-cascades-urp/Core/Shaders/Common.hlsl"
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/SphericalHarmonics.hlsl"
 
 // #define SIMPLE_RAYCASTING
@@ -292,13 +292,25 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
     // TODO: Check what ray length and range should be!
     int2 range = Ranges2[_CascadeLevel];
-    range.x = 0;
 
     uint levels;
     float width, height;
     _MinMaxDepth.GetDimensions(_CascadeLevel + 1, width, height, levels);
     float4 outputSizeTexel = float4(width, height, 1.0f / width, 1.0f / height); // _ProbesCount; // float4(_ProbesCount.xy, 1.0f / (_ProbesCount.xy)); 
     float cascadeExponent = 0.25f * pow(2.0f, _CascadeLevel);
+
+    // TODO: Use local froxel matrix for raytracing inside it!
+    float3 probeCenterVS = ReconstructPositionVS(probeCenterUV, probeMinMaxDepth.x);
+    float3 right = ReconstructPositionVS(probeCenterUV + float2(0.1f, 0.0f), probeMinMaxDepth.x);
+    float3 up = ReconstructPositionVS(probeCenterUV + float2(0.0f, 0.1f), probeMinMaxDepth.x);
+    right = normalize(right - probeCenterVS);
+    up = normalize(up - probeCenterVS);
+
+    half3x3 localFroxelMatrix = {
+        right,
+        up,
+        normalize(probeCenterVS),
+    };
 
     RayTracing_TrapezoidIntegration(
        probeMinMaxDepth,
@@ -371,6 +383,7 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
         return;
     }
 
+    // TODO: Make one more raytracing step before storing SH!!!
     // TODO: _CascadeSize - should be probes count WITH PADDING on the CURRENT cascade!!!
     // TODO: _ProbesCount - should be probes count on the CURRENT cascade!!!
     // NOTE: _ProbesCount is probes count of low cascade!

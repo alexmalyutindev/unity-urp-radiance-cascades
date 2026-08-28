@@ -2,6 +2,7 @@
 #define DEPTH_MOMENTS_TRACING
 
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Packages/com.alexmalyutindev.radiance-cascades-urp/Core/Shaders/Common.hlsl"
 
 #define MY_FLT_EPS (1e-7f)
 
@@ -154,7 +155,7 @@ half4 RayTracing_TrapezoidIntegration(
     IntegrationSector minSector = PrepareSector(cascadePower);
     IntegrationSector maxSector = minSector;
 
-    float3 probeCenterVS = ComputeViewSpacePosition(probeCenterUV, UNITY_RAW_FAR_CLIP_VALUE, _InvProjectionMatrix);
+    float3 probeCenterVS = ReconstructPositionVS(probeCenterUV, 1.0f);
     float3 probeNormalVS = normalize(probeCenterVS);
 
     float3 probeViewDirectionVS = probeCenterVS / abs(probeCenterVS.z);
@@ -173,7 +174,7 @@ half4 RayTracing_TrapezoidIntegration(
         float2 depthMoments = GetDepthMoments(rayUV);
         float4 directLight = float4(GetSceneLighting(rayUV), -1.0f);
 
-        float3 viewDirectionVS = ComputeViewSpacePosition(rayUV, UNITY_RAW_FAR_CLIP_VALUE, _InvProjectionMatrix);
+        float3 viewDirectionVS = ReconstructPositionVS(rayUV, 1.0f);
         viewDirectionVS.xyz /= viewDirectionVS.z;
 
         float meanDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));

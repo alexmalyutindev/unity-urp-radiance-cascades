@@ -1,3 +1,6 @@
+#ifndef RC_COMMON_INCLUDED
+#define RC_COMMON_INCLUDED
+
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
 float4 _ColorTexture_TexelSize;
@@ -12,6 +15,16 @@ float4x4 _ViewToHClip;
 Texture2D _ColorTexture;
 Texture2D<float> _DepthTexture;
 Texture2D<half3> _NormalsTexture;
+
+float3 ReconstructPositionVS(float2 uv, float eyeDepth)
+{
+    float2 ndc = mad(uv, 2.0f, -1.0f);
+    return float3(
+        ndc.x / _ViewToHClip[0][0],
+        ndc.y / _ViewToHClip[1][1],
+        1.0f
+    ) * eyeDepth;
+}
 
 float GetSectorId(int2 texCoord, float probeSize)
 {
@@ -171,3 +184,5 @@ float4 LinearEyeDepth(float4 depth, float4 zBufferParam)
 {
     return 1.0f / (zBufferParam.z * depth + zBufferParam.w);
 }
+
+#endif
