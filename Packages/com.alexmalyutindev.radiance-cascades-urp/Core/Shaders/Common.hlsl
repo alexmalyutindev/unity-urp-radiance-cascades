@@ -18,9 +18,17 @@ Texture2D<half3> _NormalsTexture;
 
 struct IntegrationSector
 {
-    float4x4 transmittance;
-    float4x4 color;
+    half4x4 transmittance;
+    half4x4 color;
 };
+
+inline float2 TransformViewToScreenUV(float3 positionVS)
+{
+    float4 positionCS = mul(_ViewToHClip, float4(positionVS, 1));
+    positionCS.xyz /= positionCS.w;
+    positionCS.xy = mad(positionCS.xy, float2(0.5f, 0.5f), float2(0.5f, 0.5f));
+    return positionCS.xy;
+}
 
 float3 ReconstructPositionVS(float2 uv, float eyeDepth)
 {

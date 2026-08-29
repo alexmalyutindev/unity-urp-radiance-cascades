@@ -5,28 +5,28 @@
 #include "Common.hlsl"
 #include "SoftCoverage.hlsl"
 
-#define MY_FLT_EPS (1e-7f)
-static const float SQRT3 = 1.73205077648162841796875;
+static const half HLF_EPS = 1e-7h;
+static const half SQRT3 = sqrt(3.0h);
 
 struct Trapezoid
 {
-    float median;
-    float constHalfSize;
-    float linHalfSize;
-    float height;
+    half median;
+    half constHalfSize;
+    half linHalfSize;
+    half height;
 };
 
 // Builds a trapezoid-shaped opacity function from an interval [minmax.x, minmax.y] offset by a uniformly
 // distributed function with variance = sigma^2
-Trapezoid GetVarianceTrapezoid(float2 minmax, float sigma0)
+Trapezoid GetVarianceTrapezoid(half2 minMax, half sigma0)
 {
     Trapezoid result;
-    float halfRange = SQRT3 * sigma0;
-    float halfSize = (minmax.y - minmax.x) * 0.5f;
-    result.median = 0.5f * (minmax.x + minmax.y);
+    half halfRange = SQRT3 * sigma0;
+    half halfSize = (minMax.y - minMax.x) * 0.5f;
+    result.median = 0.5f * (minMax.x + minMax.y);
     result.constHalfSize = abs(halfSize - halfRange);
-    result.linHalfSize = max(MY_FLT_EPS, halfSize + halfRange - result.constHalfSize);
-    result.height = min(1.0f, halfSize / max(MY_FLT_EPS, halfRange));
+    result.linHalfSize = max(HLF_EPS, halfSize + halfRange - result.constHalfSize);
+    result.height = min(1.0f, halfSize / max(HLF_EPS, halfRange));
     return result;
 }
 
@@ -51,39 +51,34 @@ IntegrationSector PrepareSector(float cascadePower)
     const float4 directLight = float4(0.0f, 0.0f, 0.0f, -1.0f);
 
     IntegrationSector sector;
-    sector.transmittance = float4x4(
-        float4(1.0f, 1.0f, 1.0f, 1.0f),
-        float4(1.0f, 1.0f, 1.0f, 1.0f),
-        float4(1.0f, 1.0f, 1.0f, 1.0f),
-        float4(1.0f, 1.0f, 1.0f, 1.0f)
-    );
+    sector.transmittance = 1.0h;
     sector.color = float4x4(
-        float4(0.0f, 0.0f, 0.0f, 1.0f),
-        float4(0.0f, 0.0f, 0.0f, 1.0f),
-        float4(0.0f, 0.0f, 0.0f, 1.0f),
-        float4(0.0f, 0.0f, 0.0f, 1.0f)
+        half4(0.0h, 0.0h, 0.0h, 1.0h),
+        half4(0.0h, 0.0h, 0.0h, 1.0h),
+        half4(0.0h, 0.0h, 0.0h, 1.0h),
+        half4(0.0h, 0.0h, 0.0h, 1.0h)
     );
 
-    float sigma = 0.1f;
-    float2 minmax = float2(0.0f, MY_FLT_EPS);
+    half sigma = 0.1f;
+    half2 minmax = float2(0.0f, HLF_EPS);
 
     Trapezoid trapezoid = GetVarianceTrapezoid(minmax, sigma);
 
-    float prevOcclusion = IntegrateTrapezoid(trapezoid, 0.0f);
+    half prevOcclusion = IntegrateTrapezoid(trapezoid, 0.0f);
 
     UNITY_UNROLL
     for (uint rayId = 0; rayId < 16; rayId++)
     {
-        float alpha = (rayId + 1.0f) * (1.0f / 16.0f);
+        half alpha = (rayId + 1.0f) * (1.0f / 16.0f);
 
         int groupId = rayId / 4;
         int subRayId = rayId % 4;
 
-        float occlusion = IntegrateTrapezoid(trapezoid, alpha);
-        float transmittance = saturate(pow(saturate(1.0f - (occlusion - prevOcclusion) * 16.0f), cascadePower));
+        half occlusion = IntegrateTrapezoid(trapezoid, alpha);
+        half transmittance = saturate(pow(saturate(1.0f - (occlusion - prevOcclusion) * 16.0f), cascadePower));
         prevOcclusion = occlusion;
 
-        float currentTransmittance = sector.transmittance[groupId][subRayId];
+        half currentTransmittance = sector.transmittance[groupId][subRayId];
         sector.color[groupId] += directLight * currentTransmittance * saturate(1.0f - transmittance) * 0.25h;
         sector.transmittance[groupId][subRayId] *= saturate(transmittance);
     }
@@ -99,33 +94,33 @@ void IntegrateDepthSector(
     float3 probeNormalVS, float3 probeCenterVS,
     float3 occluderMeanVS, float3 occluderUpperVS, float3 occluderThickVS,
     float4 directLight,
-    float cascadePower,
+    half cascadePower,
     inout IntegrationSector sector
 )
 {
-    float meanAngle = dot(probeNormalVS, normalize(occluderMeanVS - probeCenterVS)) * 0.5f + 0.5f;
-    float upperAngle = dot(probeNormalVS, normalize(occluderUpperVS - probeCenterVS)) * 0.5f + 0.5f;
-    float thickAngle = dot(probeNormalVS, normalize(occluderThickVS - probeCenterVS)) * 0.5f + 0.5f;
-    float sigma = max(MY_FLT_EPS, upperAngle - meanAngle);
-    
+    half meanAngle = dot(probeNormalVS, normalize(occluderMeanVS - probeCenterVS)) * 0.5f + 0.5f;
+    half upperAngle = dot(probeNormalVS, normalize(occluderUpperVS - probeCenterVS)) * 0.5f + 0.5f;
+    half thickAngle = dot(probeNormalVS, normalize(occluderThickVS - probeCenterVS)) * 0.5f + 0.5f;
+    half sigma = max(HLF_EPS, upperAngle - meanAngle);
+
     Trapezoid trapezoid = GetVarianceTrapezoid(float2(meanAngle, thickAngle), sigma);
 
-    float prevOcclusion = IntegrateTrapezoid(trapezoid, 0.0f);
+    half prevOcclusion = IntegrateTrapezoid(trapezoid, 0.0f);
 
     UNITY_UNROLL
     for (uint rayId = 0; rayId < 16; rayId++)
     {
-        float alpha = (rayId + 1.0f) * (1.0f / 16.0f);
+        half alpha = (rayId + 1.0f) * (1.0f / 16.0f);
 
         int groupId = rayId / 4;
         int subRayId = rayId % 4;
 
-        float occlusion = IntegrateTrapezoid(trapezoid, alpha);
-        float transmittance = saturate(pow(saturate(1.0f - (occlusion - prevOcclusion) * 16.0f), cascadePower));
-        // float transmittance = saturate(1.0f - (occlusion - prevOcclusion) * 16.0f);
+        half occlusion = IntegrateTrapezoid(trapezoid, alpha);
+        half transmittance = saturate(pow(saturate(1.0f - (occlusion - prevOcclusion) * 16.0f), cascadePower));
+        // half transmittance = saturate(1.0f - (occlusion - prevOcclusion) * 16.0f);
         prevOcclusion = occlusion;
 
-        float currentTransmittance = sector.transmittance[groupId][subRayId];
+        half currentTransmittance = sector.transmittance[groupId][subRayId];
         sector.color[groupId] += directLight * currentTransmittance * saturate(1.0f - transmittance) * 0.25h;
         sector.transmittance[groupId][subRayId] *= saturate(transmittance);
     }
@@ -139,8 +134,7 @@ half4 RayTracing_TrapezoidIntegration(
     float2 probeCenterUV,
     float2 rayDirection,
     float2 range,
-    float4 outputSizeTexel,
-    float cascadePower,
+    half cascadePower,
     out half4x4 nearSectorRadiance,
     out half4x4 farSectorRadiance
 )
@@ -148,16 +142,18 @@ half4 RayTracing_TrapezoidIntegration(
     const float depthThickness = 40.0f;
     const float stepSize = _RayScale;
 
-    IntegrationSector minSector = PrepareSector(cascadePower);
-    IntegrationSector maxSector = minSector;
+    IntegrationSector integrationSector[2];
+    integrationSector[0] = PrepareSector(cascadePower);
+    integrationSector[1] = integrationSector[0];
 
     float3 probeViewDirectionVS = ReconstructPositionVS(probeCenterUV, 1.0f);
     float3 probeNormalVS = normalize(probeViewDirectionVS);
 
-    float3 minProbeCenterVS = probeViewDirectionVS * probeMinMaxDepth.x;
-    float3 maxProbeCenterVS = probeViewDirectionVS * probeMinMaxDepth.y;
+    float3 probeCenterVS[2];
+    probeCenterVS[0] = probeViewDirectionVS * probeMinMaxDepth.x;
+    probeCenterVS[1] = probeViewDirectionVS * probeMinMaxDepth.y;
 
-    float2 directionUV = stepSize * rayDirection * outputSizeTexel.zw;
+    float2 directionUV = stepSize * rayDirection;
 
     UNITY_LOOP
     for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)
@@ -172,29 +168,26 @@ half4 RayTracing_TrapezoidIntegration(
         float3 viewDirectionVS = ReconstructPositionVS(rayUV, 1.0f);
 
         float upperDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
-        float3 occluderMeanVS = viewDirectionVS * depthMoments.x; // actually mean depth
-        float3 occluderUpperVS = viewDirectionVS * upperDepth; // depth upper bound
-        float3 occluderThickVS = viewDirectionVS * (depthMoments.x + depthThickness); // thick depth
+        float3 occluderMeanVS = viewDirectionVS * depthMoments.x;
+        float3 occluderUpperVS = viewDirectionVS * upperDepth;
+        float3 occluderThickVS = viewDirectionVS * (depthMoments.x + depthThickness);
 
-        IntegrateDepthSector(
-            probeNormalVS, minProbeCenterVS,
-            occluderMeanVS, occluderUpperVS, occluderThickVS,
-            directLight,
-            cascadePower,
-            minSector
-        );
-        IntegrateDepthSector(
-            probeNormalVS, maxProbeCenterVS,
-            occluderMeanVS, occluderUpperVS, occluderThickVS,
-            directLight,
-            cascadePower,
-            maxSector
-        );
+        UNITY_UNROLL
+        for (uint sectorId = 0u; sectorId < 2u; sectorId++)
+        {
+            IntegrateDepthSector(
+                probeNormalVS, probeCenterVS[sectorId],
+                occluderMeanVS, occluderUpperVS, occluderThickVS,
+                directLight,
+                cascadePower,
+                integrationSector[sectorId]
+            );
+        }
     }
 
-    nearSectorRadiance = minSector.color;
-    farSectorRadiance = maxSector.color;
-    return float4(maxProbeCenterVS, 0.0f);
+    nearSectorRadiance = integrationSector[0].color;
+    farSectorRadiance = integrationSector[1].color;
+    return 0.0f;
 }
 
 half4 RayTracing_SoftBins(
