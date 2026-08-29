@@ -12,10 +12,10 @@ float _RayScale;
 float _CascadeLevel;
 float4 _ProbesCount;
 // _ProbesCount + Padding
-float2 _CascadeSize;
+float4 _CascadeSize;
 
-float2 _UpperCascadeSize;
-float2 _UpperProbesCount;
+float4 _UpperCascadeSize;
+float4 _UpperProbesCount;
 
 float2 _VarianceDepthSize;
 float4x4 _InvProjectionMatrix;
@@ -179,8 +179,8 @@ float4 LoadLowRadiance(
     static const int2 neighbours[4] = {int2(0, 0), int2(1, 0), int2(0, 1), int2(1, 1)};
 
     // TODO: Add ProbesCount to clip padding
-    const int2 lowCascadeSize = floor(_UpperCascadeSize); // floor(_CascadeSize * 0.5f);
-    int2 hiProbeId = coords % _CascadeSize; // NOTE: Wrap coords to cascade area with padding
+    const int2 lowCascadeSize = floor(_UpperCascadeSize.xy); // floor(_CascadeSize * 0.5f);
+    int2 hiProbeId = coords % _CascadeSize.xy; // NOTE: Wrap coords to cascade area with padding
 
     float2 lowProbeContinuous = hiProbeId * 0.5f - 0.25f;
     int2 lowProbeBaseId = (int2)floor(lowProbeContinuous);
@@ -252,6 +252,24 @@ float4 LoadLowRadiance(
     return bilinearWeights;
 }
 
+float2 GetProbeViewportUV(uint2 probeCoord, uint cascadeLevel, float4 screenSize)
+{
+    // 1. Calculate probe spacing in pixels for this cascade (2^c)
+    float probeSpacing = float(4 << cascadeLevel);
+
+    // 2. Locate center of probe in padded pixel space
+    float2 probePixelPos = (float2(probeCoord) + 0.5f) * probeSpacing;
+
+    // 3. Convert to UV space of the unpadded Viewport (1280x720)
+    float2 uv = probePixelPos * screenSize.zw;
+
+    // 4. Clamp UV to avoid sampling padding artifacts at edges
+    float2 maxValidUV = (screenSize.xy - 0.5f) * screenSize.zw;
+    uv = min(uv, maxValidUV);
+
+    return uv;
+}
+
 [numthreads(8, 4, 1)]
 void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 {
@@ -260,7 +278,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     uint2 targetCoords = int2(id.x, id.y + 7 * floor(_CascadeSize.y));
 
     // NOTE: On each cascade we compute N screen oriented rays.
-    uint2 probeCenterCoord = coords % int2(_CascadeSize);
+    uint2 probeCenterCoord = coords % int2(_CascadeSize.xy);
     // NOTE: Drop threads outside of cascade probes count.
     if (any(probeCenterCoord.xy >= uint2(_ProbesCount.xy)))
     {
@@ -273,17 +291,15 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     }
 
     float2 probeCenterUV = saturate(float2(probeCenterCoord + 0.5f) * _ProbesCount.zw);
-    const float cascadeLevel = _CascadeLevel;
-    float2 probeMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, probeCenterCoord, _CascadeLevel + 1).xy;
-
+    probeCenterUV = GetProbeViewportUV(probeCenterCoord, _CascadeLevel, _ScreenSize);
+    
     float2 rayDirectionUV;
     {
         // TODO: Fix hardcoded values.
-        float cascadeFactor = pow(2.0f, cascadeLevel);
+        float cascadeFactor = pow(2.0f, _CascadeLevel);
         float radialRaysCount = 8.0f * cascadeFactor;
-        // TODO: Fill _CascadeBufferSize.zw with 1/texelSize!!!
-        float angleId = floor(coords.x * radialRaysCount / _CascadeBufferSize.x);
-        float deltaPhi = TWO_PI * pow(0.5f, cascadeLevel) * 0.25f;
+        float angleId = floor(coords.x * radialRaysCount * _CascadeBufferSize.z);
+        float deltaPhi = TWO_PI * pow(0.5f, _CascadeLevel) * 0.25f;
         sincos((angleId + 0.5f) * deltaPhi, rayDirectionUV.y, rayDirectionUV.x);
     }
 
@@ -291,27 +307,12 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     float4x4 farSectorRadiance;
 
     // TODO: Check what ray length and range should be!
-    int2 range = Ranges2[_CascadeLevel];
-    range.x = 1.0f;
+    int2 range = int2(1, 1 + pow(2, _CascadeLevel));
 
-    uint levels;
-    float width, height;
-    _MinMaxDepth.GetDimensions(_CascadeLevel + 1, width, height, levels);
-    float4 outputSizeTexel = float4(width, height, 1.0f / width, 1.0f / height); // _ProbesCount; // float4(_ProbesCount.xy, 1.0f / (_ProbesCount.xy)); 
+    float4 outputSizeTexel = _ProbesCount;
     float cascadeExponent = 0.25f * pow(2.0f, _CascadeLevel);
 
-    // TODO: Use local froxel matrix for raytracing inside it!
-    float3 probeCenterVS = ReconstructPositionVS(probeCenterUV, probeMinMaxDepth.x);
-    float3 right = ReconstructPositionVS(probeCenterUV + float2(0.1f, 0.0f), probeMinMaxDepth.x);
-    float3 up = ReconstructPositionVS(probeCenterUV + float2(0.0f, 0.1f), probeMinMaxDepth.x);
-    right = normalize(right - probeCenterVS);
-    up = normalize(up - probeCenterVS);
-
-    half3x3 localFroxelMatrix = {
-        right,
-        up,
-        normalize(probeCenterVS),
-    };
+    float2 probeMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, probeCenterCoord, _CascadeLevel + 1).xy;
 
     RayTracing_TrapezoidIntegration(
        probeMinMaxDepth,
@@ -340,26 +341,15 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
                 lowFarProbeRadiance
             );
 
-            if (1)
-            {
-                // Near probe
-                float4 currentRadiance = nearSectorRadiance[depthRayId];
-                nearSectorRadiance[depthRayId].rgb = lowNearProbeRadiance.rgb * currentRadiance.a + currentRadiance.rgb;
-                nearSectorRadiance[depthRayId].a = currentRadiance.a * lowNearProbeRadiance.a;
+            // Near probe
+            float4 currentRadiance = nearSectorRadiance[depthRayId];
+            nearSectorRadiance[depthRayId].rgb = lowNearProbeRadiance.rgb * currentRadiance.a + currentRadiance.rgb;
+            nearSectorRadiance[depthRayId].a = currentRadiance.a * lowNearProbeRadiance.a;
 
-                // Far probe
-                currentRadiance = farSectorRadiance[depthRayId];
-                farSectorRadiance[depthRayId].rgb = lowFarProbeRadiance.rgb * currentRadiance.a + currentRadiance.rgb;
-                farSectorRadiance[depthRayId].a = currentRadiance.a * lowFarProbeRadiance.a;
-            }
-
-            // if (_CascadeLevel <= 2)
-            // {
-            //     float2 aspect = float2(1.0f, _ProbesCount.y * _ProbesCount.z);
-            //     float centerDot = saturate(1.0f - length((probeCenterUV * 2.0f - 1.0f) * aspect) * 40.0f);
-            //     nearSectorRadiance[depthRayId] = lowNearProbeRadiance + centerDot;
-            //     farSectorRadiance[depthRayId] = lowFarProbeRadiance;
-            // }
+            // Far probe
+            currentRadiance = farSectorRadiance[depthRayId];
+            farSectorRadiance[depthRayId].rgb = lowFarProbeRadiance.rgb * currentRadiance.a + currentRadiance.rgb;
+            farSectorRadiance[depthRayId].a = currentRadiance.a * lowFarProbeRadiance.a;
         }
     }
 
@@ -465,7 +455,7 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
     }
 
     _RadianceSH[coords + int2(0, _CascadeSize.y)] = sh0;
-    _RadianceSH[coords + int2(_CascadeSize)]       = sh1;
+    _RadianceSH[coords + int2(_CascadeSize.xy)]       = sh1;
     _RadianceSH[coords]                            = sh2;
     _RadianceSH[coords + int2(_CascadeSize.x, 0)]  = sh3;
 }

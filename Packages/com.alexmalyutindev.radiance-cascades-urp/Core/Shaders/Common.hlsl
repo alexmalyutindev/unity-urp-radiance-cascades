@@ -16,6 +16,12 @@ Texture2D _ColorTexture;
 Texture2D<float> _DepthTexture;
 Texture2D<half3> _NormalsTexture;
 
+struct IntegrationSector
+{
+    float4x4 transmittance;
+    float4x4 color;
+};
+
 float3 ReconstructPositionVS(float2 uv, float eyeDepth)
 {
     float2 ndc = mad(uv, 2.0f, -1.0f);

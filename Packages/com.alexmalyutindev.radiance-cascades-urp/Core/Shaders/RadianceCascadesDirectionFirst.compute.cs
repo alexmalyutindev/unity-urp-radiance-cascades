@@ -1,3 +1,4 @@
+using System.Buffers;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.RenderGraphModule;
@@ -10,14 +11,23 @@ namespace AlexMalyutinDev.RadianceCascades
         private readonly ComputeShader _compute;
         private readonly int _renderAndMergeKernel;
         private readonly int _combineSHKernel;
+
+        private readonly ProfilingSampler _renderMergeSampler;
+        private readonly ProfilingSampler _combineShSampler;
+        
         private readonly LocalKeyword _bilinearKw;
         private readonly LocalKeyword _bilateralKw;
+        private readonly ArrayPool<Vector2Int> _vector2IntPool;
 
         public RadianceCascadesDirectionFirstCS(ComputeShader compute)
         {
             _compute = compute;
+            _vector2IntPool = ArrayPool<Vector2Int>.Create();
             _renderAndMergeKernel = _compute.FindKernel("RenderAndMergeCascade");
             _combineSHKernel = _compute.FindKernel("CombineSH");
+
+            _renderMergeSampler = new ProfilingSampler("RadianceCascade.RenderMerge");
+            _combineShSampler = new ProfilingSampler("RadianceCascade.CombineSH");
         }
 
         public void RenderMerge(ComputeCommandBuffer cmd, ref RenderMergeArgs args)
@@ -25,7 +35,7 @@ namespace AlexMalyutinDev.RadianceCascades
             var kernel = _renderAndMergeKernel;
             if (kernel < 0) return;
 
-            cmd.BeginSample("RadianceCascade.RenderMerge");
+            using var _ = new ProfilingScope(cmd, _renderMergeSampler);
 
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.DepthTexture, args.Depth);
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.MinMaxDepth, args.MinMaxDepth);
@@ -50,11 +60,42 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.SetComputeFloatParam(_compute, "_RayScale", args.RayScale);
 
             const int maxCascadeLevel = 4;
-            var cascadeSizes = new Vector2Int[maxCascadeLevel + 2];
-            var probesCounts = new Vector2Int[maxCascadeLevel + 2];
-            
-            cascadeSizes[0] = new Vector2Int((int)args.Cascade0Size.x, (int)args.Cascade0Size.y);
-            probesCounts[0] = new Vector2Int((int)args.Cascade0ProbesCount.x, (int)args.Cascade0ProbesCount.y);
+            var cascadeSizes = _vector2IntPool.Rent(maxCascadeLevel + 2);
+            var probesCounts = _vector2IntPool.Rent(maxCascadeLevel + 2);
+            FillCascadePyramid(args.Cascade0Size, args.Cascade0ProbesCount, ref cascadeSizes, ref probesCounts);
+
+            _compute.GetKernelThreadGroupSizes(kernel, out var groupSizeX, out var groupSizeY, out var _);
+            var threadGroupsX = Mathf.CeilToInt(8 * args.Cascade0Size.x / (2 * groupSizeX));
+
+            for (int cascadeLevel = maxCascadeLevel; cascadeLevel >= 0; cascadeLevel--)
+            {
+                cmd.SetComputeFloatParam(_compute, "_CascadeLevel", cascadeLevel);
+
+                var cascadeSize = ToSizeTexel(cascadeSizes[cascadeLevel]);
+                var probesCount = ToSizeTexel(probesCounts[cascadeLevel]);
+                var upperCascadeSize = ToSizeTexel(cascadeSizes[cascadeLevel + 1]);
+                var upperProbesCount = ToSizeTexel(probesCounts[cascadeLevel + 1]);
+
+                cmd.SetComputeVectorParam(_compute, "_CascadeSize", cascadeSize);
+                cmd.SetComputeVectorParam(_compute, "_ProbesCount", probesCount);
+
+                cmd.SetComputeVectorParam(_compute, "_UpperCascadeSize", upperCascadeSize);
+                cmd.SetComputeVectorParam(_compute, "_UpperProbesCount", upperProbesCount);
+
+                var threadGroupsY = Mathf.CeilToInt(args.Cascade0Size.y / ((1 << cascadeLevel) * groupSizeY));
+                cmd.DispatchCompute(_compute, kernel, threadGroupsX, threadGroupsY, 1);
+            }
+
+            _vector2IntPool.Return(probesCounts);
+            _vector2IntPool.Return(cascadeSizes);
+        }
+
+        private static void FillCascadePyramid(
+            Vector4 cascade0Size, Vector4 cascade0ProbesCount, 
+            ref Vector2Int[] cascadeSizes, ref Vector2Int[] probesCounts)
+        {
+            cascadeSizes[0] = new Vector2Int((int)cascade0Size.x, (int)cascade0Size.y);
+            probesCounts[0] = new Vector2Int((int)cascade0ProbesCount.x, (int)cascade0ProbesCount.y);
             for (int i = 1; i < probesCounts.Length; i++)
             {
                 cascadeSizes[i] = new Vector2Int(
@@ -66,48 +107,6 @@ namespace AlexMalyutinDev.RadianceCascades
                     Mathf.RoundToInt(probesCounts[i - 1].y * 0.5f)
                 );
             }
-            
-            for (int cascadeLevel = maxCascadeLevel; cascadeLevel >= 0; cascadeLevel--)
-            {
-                cmd.SetComputeFloatParam(_compute, "_CascadeLevel", cascadeLevel);
-
-                // TODO: Check probes count sizes, possibly mismatch with MinMaxDepth mipmaps sizes!
-                var (cascadeSize, probesCount) = GetCascadeSizeAndProbesCount(
-                    args.Cascade0Size, 
-                    args.Cascade0ProbesCount,
-                    args.ScreenSize,
-                    cascadeLevel
-                );
-
-                var (upperCascadeSize, upperProbesCount) = GetCascadeSizeAndProbesCount(
-                    args.Cascade0Size, 
-                    args.Cascade0ProbesCount, 
-                    args.ScreenSize,
-                    cascadeLevel + 1
-                );
-
-                cascadeSize = ToSizeTexel(cascadeSizes[cascadeLevel]);
-                probesCount = ToSizeTexel(probesCounts[cascadeLevel]);
-                upperCascadeSize = ToSizeTexel(cascadeSizes[cascadeLevel + 1]);
-                upperProbesCount = ToSizeTexel(probesCounts[cascadeLevel + 1]);
-
-                cmd.SetComputeVectorParam(_compute, "_CascadeSize", cascadeSize);
-                cmd.SetComputeVectorParam(_compute, "_ProbesCount", probesCount);
-
-                cmd.SetComputeVectorParam(_compute, "_UpperCascadeSize", upperCascadeSize);
-                cmd.SetComputeVectorParam(_compute, "_UpperProbesCount", upperProbesCount);
-
-                _compute.GetKernelThreadGroupSizes(kernel, out var groupSizeX, out var groupSizeY, out _);
-                cmd.DispatchCompute(
-                    _compute,
-                    kernel,
-                    Mathf.CeilToInt(8 * args.Cascade0Size.x / (2 * groupSizeX)),
-                    Mathf.CeilToInt(args.Cascade0Size.y / ((1 << cascadeLevel) * groupSizeY)),
-                    1
-                );
-            }
-
-            cmd.EndSample("RadianceCascade.RenderMerge");
         }
 
         public void CombineSH(ComputeCommandBuffer cmd, ref CombineSHArgs args)
@@ -115,7 +114,7 @@ namespace AlexMalyutinDev.RadianceCascades
             var kernel = _combineSHKernel;
             if (kernel < 0) return;
 
-            cmd.BeginSample("RadianceCascade.CombineSH");
+            using var _ = new ProfilingScope(cmd, _combineShSampler);
 
             cmd.SetComputeVectorParam(_compute, "_ProbesCount", args.CascadeProbesCount * 2.0f);
             cmd.SetComputeVectorParam(_compute, "_CascadeSize", args.CascadeProbesCountWithPadding * 2.0f);
@@ -130,29 +129,8 @@ namespace AlexMalyutinDev.RadianceCascades
 
             int width = Mathf.FloorToInt(args.CascadeProbesCountWithPadding.x) * 2;
             int height = Mathf.FloorToInt(args.CascadeProbesCountWithPadding.y) * 2;
+            // NOTE: Hardcoded groupSize!
             cmd.DispatchCompute(_compute, kernel, width / 8, height / 4, 1);
-
-            cmd.EndSample("RadianceCascade.CombineSH");
-        }
-
-        private (Vector4, Vector4) GetCascadeSizeAndProbesCount(
-            Vector4 cascade0Size,
-            Vector4 cascade0ProbesCount,
-            Vector2Int screenSize,
-            int cascadeLevel
-        )
-        {
-            var size = new Vector4(
-                Mathf.CeilToInt((int)cascade0Size.x >> cascadeLevel),
-                Mathf.CeilToInt((int)cascade0Size.y >> cascadeLevel)
-            );
-            var probesCountX = Mathf.CeilToInt((int)cascade0ProbesCount.x >> cascadeLevel); // Mathf.Max(1, screenSize.x >> (cascadeLevel + 2)); // Mathf.FloorToInt(cascade0ProbesCount.x / (1 << cascadeLevel));
-            var probesCountY = Mathf.CeilToInt((int)cascade0ProbesCount.y >> cascadeLevel); // Mathf.Max(1, screenSize.y >> (cascadeLevel + 2)); // Mathf.FloorToInt(cascade0ProbesCount.y / (1 << cascadeLevel));
-            Vector4 probesCount = new Vector4(
-                probesCountX, probesCountY,
-                1.0f / probesCountX, 1.0f / probesCountY
-            );
-            return (size, probesCount);
         }
 
         private static Vector4 ToSizeTexel(Vector2Int size)
