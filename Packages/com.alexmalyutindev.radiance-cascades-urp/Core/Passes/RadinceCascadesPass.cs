@@ -7,12 +7,12 @@ using UnityEngine.Rendering.Universal;
 
 namespace AlexMalyutinDev.RadianceCascades
 {
-    public class DirectionFirstRCPass : ScriptableRenderPass, IDisposable
+    public class RadinceCascadesPass : ScriptableRenderPass, IDisposable
     {
         private readonly RadianceCascadesDirectionFirstCS _compute;
         private readonly Material _blitMaterial;
 
-        public DirectionFirstRCPass(RadianceCascadeResources resources)
+        public RadinceCascadesPass(RadianceCascadeResources resources)
         {
             profilingSampler = new ProfilingSampler("RadianceCascades.DirectionFirst");
             _compute = new RadianceCascadesDirectionFirstCS(resources.RadianceCascadesDirectionalFirstCS);
