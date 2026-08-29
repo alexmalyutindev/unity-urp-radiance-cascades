@@ -21,7 +21,7 @@ struct Trapezoid
 Trapezoid GetVarianceTrapezoid(float2 minmax, float sigma0)
 {
     Trapezoid result;
-    float halfRange = sqrt(3.0f) * sigma0;
+    float halfRange = SQRT3 * sigma0;
     float halfSize = (minmax.y - minmax.x) * 0.5f;
     result.median = 0.5f * (minmax.x + minmax.y);
     result.constHalfSize = abs(halfSize - halfRange);
@@ -97,18 +97,18 @@ IntegrationSector PrepareSector(float cascadePower)
 
 void IntegrateDepthSector(
     float3 probeNormalVS, float3 probeCenterVS,
-    float3 occluderNearVS, float3 occluderFarVS, float3 occluderMeanVS,
+    float3 occluderMeanVS, float3 occluderUpperVS, float3 occluderThickVS,
     float4 directLight,
     float cascadePower,
     inout IntegrationSector sector
 )
 {
-    float nearAngle = dot(probeNormalVS, normalize(occluderNearVS - probeCenterVS)) * 0.5f + 0.5f;
-    float farAngle = dot(probeNormalVS, normalize(occluderFarVS - probeCenterVS)) * 0.5f + 0.5f;
     float meanAngle = dot(probeNormalVS, normalize(occluderMeanVS - probeCenterVS)) * 0.5f + 0.5f;
-    float sigma = max(MY_FLT_EPS, meanAngle - nearAngle);
+    float upperAngle = dot(probeNormalVS, normalize(occluderUpperVS - probeCenterVS)) * 0.5f + 0.5f;
+    float thickAngle = dot(probeNormalVS, normalize(occluderThickVS - probeCenterVS)) * 0.5f + 0.5f;
+    float sigma = max(MY_FLT_EPS, upperAngle - meanAngle);
     
-    Trapezoid trapezoid = GetVarianceTrapezoid(float2(nearAngle, farAngle), sigma);
+    Trapezoid trapezoid = GetVarianceTrapezoid(float2(meanAngle, thickAngle), sigma);
 
     float prevOcclusion = IntegrateTrapezoid(trapezoid, 0.0f);
 
@@ -171,21 +171,21 @@ half4 RayTracing_TrapezoidIntegration(
 
         float3 viewDirectionVS = ReconstructPositionVS(rayUV, 1.0f);
 
-        float meanDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
-        float3 occluderNearVS = viewDirectionVS * depthMoments.x;
-        float3 occluderFarVS = viewDirectionVS * (depthMoments.x + depthThickness);
-        float3 occluderMeanVS = viewDirectionVS * meanDepth;
+        float upperDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
+        float3 occluderMeanVS = viewDirectionVS * depthMoments.x; // actually mean depth
+        float3 occluderUpperVS = viewDirectionVS * upperDepth; // depth upper bound
+        float3 occluderThickVS = viewDirectionVS * (depthMoments.x + depthThickness); // thick depth
 
         IntegrateDepthSector(
             probeNormalVS, minProbeCenterVS,
-            occluderNearVS, occluderFarVS, occluderMeanVS,
+            occluderMeanVS, occluderUpperVS, occluderThickVS,
             directLight,
             cascadePower,
             minSector
         );
         IntegrateDepthSector(
             probeNormalVS, maxProbeCenterVS,
-            occluderNearVS, occluderFarVS, occluderMeanVS,
+            occluderMeanVS, occluderUpperVS, occluderThickVS,
             directLight,
             cascadePower,
             maxSector

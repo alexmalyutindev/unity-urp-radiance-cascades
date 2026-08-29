@@ -86,7 +86,7 @@ static const int2 Ranges4[6] =
 
 float2 GetDepthMoments(float2 uv)
 {
-    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, uv, _CascadeLevel).xy;
+    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, uv, _CascadeLevel + 1).xy;
 }
 float3 GetSceneLighting(float2 uv)
 {
@@ -254,16 +254,9 @@ float4 LoadLowRadiance(
 
 float2 GetProbeViewportUV(uint2 probeCoord, uint cascadeLevel, float4 screenSize)
 {
-    // 1. Calculate probe spacing in pixels for this cascade (2^c)
     float probeSpacing = float(4 << cascadeLevel);
-
-    // 2. Locate center of probe in padded pixel space
     float2 probePixelPos = (float2(probeCoord) + 0.5f) * probeSpacing;
-
-    // 3. Convert to UV space of the unpadded Viewport (1280x720)
     float2 uv = probePixelPos * screenSize.zw;
-
-    // 4. Clamp UV to avoid sampling padding artifacts at edges
     float2 maxValidUV = (screenSize.xy - 0.5f) * screenSize.zw;
     uv = min(uv, maxValidUV);
 
@@ -292,7 +285,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
     float2 probeCenterUV = saturate(float2(probeCenterCoord + 0.5f) * _ProbesCount.zw);
     probeCenterUV = GetProbeViewportUV(probeCenterCoord, _CascadeLevel, _ScreenSize);
-    
+
     float2 rayDirectionUV;
     {
         // TODO: Fix hardcoded values.
@@ -405,8 +398,11 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
         probeWeights_min, probeWeights_max
     );
 
-    float2 depthMoments = GetDepthMoments((coords + 0.5f) / _ProbesCount.xy);
-    float midDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
+    float2 depthMoments = SAMPLE_TEXTURE2D_LOD(
+        _VarianceDepth, sampler_VarianceDepth, 
+        (coords + 0.5f) * _ProbesCount.zw * 0.25f, 
+        0
+    );
 
     float4 sh0 = 0.0f;
     float4 sh1 = 0.0f;
@@ -443,7 +439,7 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
 
             float4 radiance = (radianceMin + radianceMax) * 0.5f;
             // TODO: Blend min and max probes.
-            // float4 radiance = lerp(radianceMin, radianceMax, (hiMinMaxDepth - minDepth) / max(0.00001f, depthThickness));
+            // float4 radiance = lerp(radianceMin, radianceMax, (depthMoments.x - hiMinMaxDepth.x) / max(0.0001f, depthThickness));
 
             float3 direction = normalize(GetRayDirectionDFWS(int2(x, y), 0));
 
@@ -455,7 +451,7 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
     }
 
     _RadianceSH[coords + int2(0, _CascadeSize.y)] = sh0;
-    _RadianceSH[coords + int2(_CascadeSize.xy)]       = sh1;
-    _RadianceSH[coords]                            = sh2;
-    _RadianceSH[coords + int2(_CascadeSize.x, 0)]  = sh3;
+    _RadianceSH[coords + int2(_CascadeSize.xy)]   = sh1;
+    _RadianceSH[coords]                           = sh2;
+    _RadianceSH[coords + int2(_CascadeSize.x, 0)] = sh3;
 }
