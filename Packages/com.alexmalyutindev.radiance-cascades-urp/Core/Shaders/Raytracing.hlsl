@@ -5,7 +5,7 @@
 #include "Common.hlsl"
 #include "SoftCoverage.hlsl"
 
-static const half HLF_EPS = 1e-7h;
+static const half HLF_EPS = 1e-5h;
 static const half SQRT3 = sqrt(3.0h);
 
 struct Trapezoid
@@ -94,7 +94,7 @@ void IntegrateDepthSector(
     float3 probeNormalVS, float3 probeCenterVS,
     float3 occluderMeanVS, float3 occluderUpperVS, float3 occluderThickVS,
     float4 directLight,
-    half cascadePower,
+    half sharpness,
     inout IntegrationSector sector
 )
 {
@@ -116,7 +116,7 @@ void IntegrateDepthSector(
         int subRayId = rayId % 4;
 
         half occlusion = IntegrateTrapezoid(trapezoid, alpha);
-        half transmittance = saturate(pow(saturate(1.0f - (occlusion - prevOcclusion) * 16.0f), cascadePower));
+        half transmittance = saturate(pow(saturate(1.0f - (occlusion - prevOcclusion) * 16.0f), sharpness));
         // half transmittance = saturate(1.0f - (occlusion - prevOcclusion) * 16.0f);
         prevOcclusion = occlusion;
 
@@ -158,7 +158,7 @@ half4 RayTracing_TrapezoidIntegration(
     UNITY_LOOP
     for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)
     {
-        float2 rayUV = probeCenterUV + (rayStep + 0.5f) * directionUV;
+        float2 rayUV = probeCenterUV + rayStep * directionUV;
 
         if (any(rayUV > 1.0f || rayUV < 0.0f)) break;
 

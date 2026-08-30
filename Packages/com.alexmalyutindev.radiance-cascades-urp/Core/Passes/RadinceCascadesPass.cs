@@ -105,9 +105,9 @@ namespace AlexMalyutinDev.RadianceCascades
             var desc = new TextureDesc(cascadeWidth, cascadeHeight)
             {
                 name = "RadianceCascades",
-                format = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGBFloat, false),
+                format = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGBHalf, false),
                 enableRandomWrite = true,
-                clearBuffer = false, // NOTE: TESTING!!! Remove after!
+                clearBuffer = false,
             };
             passData.CascadesSizeTexel = new Vector4(
                 desc.width, desc.height,
@@ -243,8 +243,8 @@ namespace AlexMalyutinDev.RadianceCascades
 
         public static Vector4 GetCascade0Size(int targetWidth, int targetHeight)
         {
-            int cascade0WidthWithPadding = Mathf.CeilToInt(targetWidth / 4.0f / 16.0f) * 16;
-            int cascade0HeightWithPadding = Mathf.CeilToInt(targetHeight / 4.0f / 16.0f) * 16;
+            int cascade0WidthWithPadding = Mathf.CeilToInt((float)targetWidth / (2 << 5)) * 16;
+            int cascade0HeightWithPadding = Mathf.CeilToInt((float)targetHeight / (2 << 5)) * 16;
             return new Vector4(cascade0WidthWithPadding, cascade0HeightWithPadding);
         }
     }

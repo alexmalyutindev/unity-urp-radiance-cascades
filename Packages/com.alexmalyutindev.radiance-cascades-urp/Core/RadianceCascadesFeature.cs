@@ -24,15 +24,15 @@ namespace AlexMalyutinDev.RadianceCascades
 
             _minMaxDepthPass = new MinMaxDepthPass(Resources.MinMaxDepthMaterial, _radianceCascadesRenderingData)
             {
-                renderPassEvent = RenderPassEvent.AfterRenderingGbuffer
+                renderPassEvent = RenderPassEvent.AfterRenderingDeferredLights
             };
             _smoothedDepthPass = new SmoothedDepthPass(Resources.SmoothedDepthMaterial, _radianceCascadesRenderingData)
             {
-                renderPassEvent = RenderPassEvent.AfterRenderingGbuffer
+                renderPassEvent = RenderPassEvent.AfterRenderingDeferredLights
             };
             _varianceDepthPass = new VarianceDepthPass(Resources.VarianceDepthMaterial, _radianceCascadesRenderingData)
             {
-                renderPassEvent = RenderPassEvent.AfterRenderingGbuffer
+                renderPassEvent = RenderPassEvent.AfterRenderingDeferredLights
             };
             _blurredColorBufferPass = new BlurredColorBufferPass(
                 Resources.BlurredColorBufferMaterial,

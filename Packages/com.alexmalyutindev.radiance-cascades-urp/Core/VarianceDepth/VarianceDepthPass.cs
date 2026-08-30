@@ -63,7 +63,7 @@ namespace AlexMalyutinDev.RadianceCascades
             var desc = new TextureDesc(frameDesc.width, frameDesc.height)
             {
                 name = "VarianceDepth",
-                colorFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.RGFloat, false),
+                colorFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGBFloat, false),
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Bilinear,
                 useMipMap = true,

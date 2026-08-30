@@ -483,8 +483,8 @@ Shader "Hidden/RadianceCascade/Blit"
 
             float4 _BlitTexture_TexelSize;
             TEXTURE2D_X(_BlitTexture);
-            TEXTURE2D(_MinMaxDepth);
-
+            
+            Texture2D<float2> _MinMaxDepth;
             TEXTURE2D(_GBuffer0); // Color
             TEXTURE2D(_GBuffer2); // Normals
 
@@ -624,18 +624,69 @@ Shader "Hidden/RadianceCascade/Blit"
                 );
                 return float4(max(float3(0.0f, 0.0f, 0.0f), L0L1), 1.0f);
             }
+            
+            half4 LoadSH(int2 coords, int2 offset, int2 upperBound, half4 bilinearWeights)
+            {
+                const int2 insideBounds = coords < upperBound - 1;
+                coords += offset;
+                half4 a = LOAD_TEXTURE2D(_BlitTexture, coords);
+                half4 b = LOAD_TEXTURE2D(_BlitTexture, coords + int2(1, 0) * insideBounds);
+                half4 c = LOAD_TEXTURE2D(_BlitTexture, coords + int2(0, 1) * insideBounds);
+                half4 d = LOAD_TEXTURE2D(_BlitTexture, coords + int2(1, 1) * insideBounds);
+
+                return a * bilinearWeights.x + b * bilinearWeights.y + c * bilinearWeights.z + d * bilinearWeights.w;
+            }
+            
+            float GetMinMaxDepthThickness(uint2 coords, int depthLevel, float4 bilinearWeights, 
+                out float4 lowDepthABCD_min, out float4 lowDepthABCD_max)
+            {
+                static const int2 neighbours[4] = {int2(0, 0), int2(1, 0), int2(0, 1), int2(1, 1)};
+
+                float2 minMaxDepthBilinear = float2(0.0f, 0.0f);
+                UNITY_UNROLL for (int i = 0; i < 4; i++)
+                {
+                    // TODO: Coors clamping
+                    float2 minMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords + neighbours[i], depthLevel);
+                    lowDepthABCD_min[i] = minMaxDepth.x;
+                    lowDepthABCD_max[i] = minMaxDepth.y;
+                    // minMaxDepthBilinear += minMaxDepth * bilinearWeights[i];
+                }
+
+                minMaxDepthBilinear.x = dot(lowDepthABCD_min, bilinearWeights);
+                minMaxDepthBilinear.y = dot(lowDepthABCD_max, bilinearWeights);
+
+                float depthThickness = max(0.0001f, abs(minMaxDepthBilinear.y - minMaxDepthBilinear.x));
+                return depthThickness;
+            }
 
             half4 Fragment(Varyings input) : SV_TARGET
             {
                 half4 gbuffer0 = SAMPLE_TEXTURE2D_LOD(_GBuffer0, sampler_PointClamp, input.texcoord, 0);
                 float3 normalWS = SAMPLE_TEXTURE2D_LOD(_GBuffer2, sampler_PointClamp, input.texcoord, 0);
+                float depth = LinearEyeDepth(LoadSceneDepth(input.positionCS), _ZBufferParams); 
 
-                // TODO: Bilateral upscaling!
-                float2 uv = 0.5f * input.positionCS.xy * _BlitTexture_TexelSize.xy;
-                float4 sh0 = SAMPLE_TEXTURE2D(_BlitTexture, sampler_PointClamp, uv + float2(0, 0.5f));
-                float4 shX = SAMPLE_TEXTURE2D(_BlitTexture, sampler_PointClamp, uv + 0.5f);
-                float4 shY = SAMPLE_TEXTURE2D(_BlitTexture, sampler_PointClamp, uv);
-                float4 shZ = SAMPLE_TEXTURE2D(_BlitTexture, sampler_PointClamp, uv + float2(0.5f, 0));
+                int2 coords = floor(input.positionCS.xy);
+                float2 lowProbeContinuous = coords * 0.5f - 0.25f;
+                int2 lowProbeBaseId = (int2)floor(lowProbeContinuous);
+                float2 bilinearOffsets = saturate(lowProbeContinuous - lowProbeBaseId);
+                float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
+                bilinearWeights = bilinearWeights.zxzx * bilinearWeights.wwyy;
+
+                float4 lowDepthABCD_min;
+                float4 lowDepthABCD_max;
+                float depthThickness = GetMinMaxDepthThickness(lowProbeBaseId, 0, bilinearWeights, lowDepthABCD_min, lowDepthABCD_max);
+                float4 lowDepthABCD = (lowDepthABCD_min + lowDepthABCD_max) * 0.5f;
+                
+                const float sharpness = 1.0f;
+                half4 probeWeights = exp2(-sharpness * depthThickness * abs(depth - lowDepthABCD));
+                probeWeights = NormalizeWights(probeWeights * bilinearWeights);
+
+                int2 cascadeSize = floor(_BlitTexture_TexelSize.zw * 0.5f);
+                int3 offsets = int3(cascadeSize, 0);
+                half4 sh0 = LoadSH(lowProbeBaseId, offsets.zy, cascadeSize.xy, probeWeights);
+                half4 shX = LoadSH(lowProbeBaseId, offsets.xy, cascadeSize.xy, probeWeights);
+                half4 shY = LoadSH(lowProbeBaseId, int2(0, 0), cascadeSize.xy, probeWeights);
+                half4 shZ = LoadSH(lowProbeBaseId, offsets.xz, cascadeSize.xy, probeWeights);
 
                 float3 L0L1 = SHEvalLinearL0L1(
                     normalWS,

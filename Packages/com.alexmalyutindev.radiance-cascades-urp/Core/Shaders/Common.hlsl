@@ -199,4 +199,9 @@ float4 LinearEyeDepth(float4 depth, float4 zBufferParam)
     return 1.0f / (zBufferParam.z * depth + zBufferParam.w);
 }
 
+float4 NormalizeWights(float4 weights)
+{
+    return saturate(weights / max(0.0001f, dot(weights, float4(1.0f, 1.0f, 1.0f, 1.0f))));
+}
+
 #endif

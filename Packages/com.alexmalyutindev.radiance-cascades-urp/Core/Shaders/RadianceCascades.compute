@@ -49,7 +49,7 @@ Texture2D<float3> _BlurredColor;
 // |_↗_|_↑_|_↖_|_←_|_↙_|_↓_|_↘_|_↗_|_↗_|_↑_|_↖_|_←_|_↙_|_↓_|_↘_|_↗_|
 // |_↗_|_↑_|_↖_|_←_|_↙_|_↓_|_↘_|_↗_|_↗_|_↑_|_↖_|_←_|_↙_|_↓_|_↘_|_↗_|
 // |_↗_|_↑_|_↖_|_←_|_↙_|_↓_|_↘_|_↗_|_↗_|_↑_|_↖_|_←_|_↙_|_↓_|_↘_|_↗_|
-RWTexture2D<float4> _RadianceCascades;
+RWTexture2D<half4> _RadianceCascades;
 
 // Output
 // ._____________.
@@ -57,18 +57,7 @@ RWTexture2D<float4> _RadianceCascades;
 // |______|______|
 // | SH1y | SH1z |
 // |______|______|
-RWTexture2D<float4> _RadianceSH;
-
-static const int2 Ranges2[6] =
-{
-    int2(0, 1),
-    int2(1, 2),
-    int2(2, 4),
-    int2(4, 8),
-    int2(8, 16),
-    int2(16, 32),
-};
-
+RWTexture2D<half4> _RadianceSH;
 
 ///////////////
 /// TRACING ///
@@ -76,24 +65,21 @@ static const int2 Ranges2[6] =
 
 float2 GetDepthMoments(float2 uv)
 {
-    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, uv, _CascadeLevel + 1).xy;
+    // _CacadeLevel = 0 is x1/4 of target resolution,
+    // _VarianceDepth is x1 of target resolution, then offseting mip level by 2.
+    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_VarianceDepth, uv, _CascadeLevel + 2).xy;
 }
+
 float3 GetSceneLighting(float2 uv)
 {
+    // _CacadeLevel = 0 is x1/4 of target resolution,
+    // _BlurredColor is x1/2 of target resolution, then offseting mip level by 1.
     return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_BlurredColor, uv, _CascadeLevel + 1).rgb;
 }
-float3 GetSceneLighting(float2 uv, int lod)
-{
-    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, uv, lod).rgb;
-}
+
 #include "Raytracing.hlsl"
 
 ///////////////
-
-float4 NormalizeWights(float4 weights)
-{
-    return saturate(weights / max(0.0001f, dot(weights, float4(1.0f, 1.0f, 1.0f, 1.0f))));
-}
 
 inline float4 GetRadianceWeightedSafe(int2 coords, int2 offset, float4 weights)
 {
@@ -216,8 +202,9 @@ float4 LoadLowRadiance(
 
     nearProbeRadiance = 0.0f;
     farProbeRadiance = 0.0f;
-    float4 rayWeights = 0.25f;
-    UNITY_UNROLL for (int rayI = 0; rayI < 4; rayI++)
+    float4 rayWeights = 0.5f;
+
+    UNITY_UNROLL for (int rayI = 1; rayI < 3; rayI++)
     {
         int2 offset_min = lowCascadeCoords + neighbourRaysOffset[rayI];
         float4 minProbeSample = GetRadianceWeightedSafe(lowProbeLocalId, offset_min, probeWeights_min);
@@ -380,6 +367,9 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
             bilinearWeights,
             probeWeights_min, probeWeights_max
         );
+
+        // probeWeights_min = bilinearWeights;
+        // probeWeights_max = bilinearWeights;
     }
 
     half4 sh0 = 0.0f;
@@ -390,33 +380,15 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
     int2 upperCascadeCoords = lowProbeLocalId;
     upperCascadeCoords.y += lowCascadeSize.y * 7;
 
-    static const int2 neighbours[4] = { int2(0, 0), int2(1, 0), int2(0, 1), int2(1, 1) };
-
     for (int y = 0; y < 4; y++)
     {
         for (int x = 0; x < 4; x++)
         {
-            float4 radianceMin = 0.0f;
-            float4 radianceMax = 0.0f;
-
-            int2 upperCoords = upperCascadeCoords + int2(x, -y) * lowCascadeSize;
-            
-            UNITY_UNROLL 
-            for (int i = 0; i < 4; i++)
-            {
-                radianceMin += _RadianceCascades[upperCoords + neighbours[i]] * probeWeights_min[i];
-            }
-
-            upperCoords.x += 4 * lowCascadeSize.x;
-
-            UNITY_UNROLL 
-            for (int i = 0; i < 4; i++)
-            {
-                radianceMax += _RadianceCascades[upperCoords + neighbours[i]] * probeWeights_max[i];
-            }
+            float4 radianceMin = GetRadianceWeightedSafe(upperCascadeCoords, int2(x, -y) * lowCascadeSize, probeWeights_min);
+            float4 radianceMax = GetRadianceWeightedSafe(upperCascadeCoords, int2(x + 4, -y) * lowCascadeSize, probeWeights_max);
 
             // TODO: Blend min and max probes properly!
-            float4 radiance = (radianceMin + radianceMax) * 0.5f;
+            float4 radiance = radianceMax; // (radianceMin + radianceMax) * 0.5f;
 
             float3 direction = normalize(GetRayDirectionDFWS(int2(x, y), 0));
 
