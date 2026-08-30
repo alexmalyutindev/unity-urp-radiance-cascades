@@ -103,7 +103,7 @@ void IntegrateDepthSector(
     half thickAngle = dot(probeNormalVS, normalize(occluderThickVS - probeCenterVS)) * 0.5f + 0.5f;
     half sigma = max(HLF_EPS, upperAngle - meanAngle);
 
-    Trapezoid trapezoid = GetVarianceTrapezoid(float2(meanAngle, thickAngle), sigma);
+    Trapezoid trapezoid = GetVarianceTrapezoid(float2(upperAngle, thickAngle), sigma);
 
     half prevOcclusion = IntegrateTrapezoid(trapezoid, 0.0f);
 
