@@ -78,28 +78,34 @@ namespace AlexMalyutinDev.RadianceCascades
             
             var intermediateDesc = desc;
             intermediateDesc.name = "IntermediateDownsampleBuffer";
+            intermediateDesc.width >>= 1;
+            intermediateDesc.height >>= 1;
             passData.IntermediateDownsampleBuffer = builder.CreateTransientTexture(intermediateDesc);
 
             builder.SetRenderFunc<PassData>(static (data, context) =>
             {
                 var cmd = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
+                var width = data.TargetResolution.x >> 1;
+                var height = data.TargetResolution.y >> 1;
 
                 cmd.SetRenderTarget(data.VarianceDepth, 0);
                 BlitUtils.BlitTexture(cmd, data.FrameDepth, data.Material, DepthToMomentsPass);
                 cmd.GenerateMips(data.VarianceDepth);
 
-                var width = data.TargetResolution.x;
-                var height = data.TargetResolution.y;
-                for (int mipLevel = 0; mipLevel < data.TargetMipsCount; mipLevel++)
+                for (int mipLevel = 0; mipLevel < data.TargetMipsCount - 1; mipLevel++)
                 {
-                    cmd.SetRenderTarget(data.IntermediateDownsampleBuffer, mipLevel);
-                    cmd.SetGlobalInteger("_InputMipLevel", mipLevel);
                     cmd.SetGlobalVector("_InputTexelSize", new Vector4(1.0f / width, 1.0f / height, width, height));
+
                     cmd.SetGlobalVector("_BlurDirection", new Vector4(1.0f, 0.0f));
+
+                    cmd.SetRenderTarget(data.IntermediateDownsampleBuffer, mipLevel);
+                    cmd.SetGlobalInteger("_InputMipLevel", mipLevel + 1);
                     BlitUtils.BlitTexture(cmd, data.VarianceDepth, data.Material, BlurDirectionalPass);
 
                     cmd.SetGlobalVector("_BlurDirection", new Vector4(0.0f, 1.0f));
-                    cmd.SetRenderTarget(data.VarianceDepth, mipLevel);
+
+                    cmd.SetRenderTarget(data.VarianceDepth, mipLevel + 1);
+                    cmd.SetGlobalInteger("_InputMipLevel", mipLevel);
                     BlitUtils.BlitTexture(cmd, data.IntermediateDownsampleBuffer, data.Material, BlurDirectionalPass);
                     width /= 2;
                     height /= 2;

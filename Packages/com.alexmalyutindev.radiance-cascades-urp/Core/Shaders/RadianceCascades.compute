@@ -66,8 +66,8 @@ RWTexture2D<half4> _RadianceSH;
 float2 GetDepthMoments(float2 uv)
 {
     // _CacadeLevel = 0 is x1/4 of target resolution,
-    // _VarianceDepth is x1 of target resolution, then offseting mip level by 2.
-    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_VarianceDepth, uv, _CascadeLevel + 2).xy;
+    // _VarianceDepth is x1/2 of target resolution, then offseting mip level by 1.
+    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_VarianceDepth, uv, _CascadeLevel + 1).xy;
 }
 
 float3 GetSceneLighting(float2 uv)
@@ -334,6 +334,26 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
         _RadianceSH[coords] = float4(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
+    
+    float2 probeMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords, 0);
+    float2 probeCenterUV = coords * _ProbesCount.zw;
+    float2 rayDirectionUV = _ProbesCount.zw;
+    int2 range = int2(1, 2);
+    float cascadeExponent = 0.5f;
+    
+    float4x4 radiances[2];
+    radiances[0] = 0.0f;
+    radiances[1] = 0.0f;
+
+    RayTracing_TrapezoidIntegration(
+       probeMinMaxDepth,
+       probeCenterUV,
+       rayDirectionUV,
+       range,
+       cascadeExponent,
+       radiances[0],
+       radiances[1]
+    );
 
     // TODO: Make one more raytracing step before storing SH!!!
     // TODO: _CascadeSize - should be probes count WITH PADDING on the CURRENT cascade!!!
@@ -367,9 +387,6 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
             bilinearWeights,
             probeWeights_min, probeWeights_max
         );
-
-        // probeWeights_min = bilinearWeights;
-        // probeWeights_max = bilinearWeights;
     }
 
     half4 sh0 = 0.0f;
@@ -388,7 +405,7 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
             float4 radianceMax = GetRadianceWeightedSafe(upperCascadeCoords, int2(x + 4, -y) * lowCascadeSize, probeWeights_max);
 
             // TODO: Blend min and max probes properly!
-            float4 radiance = radianceMax; // (radianceMin + radianceMax) * 0.5f;
+            float4 radiance = (radianceMin + radianceMax) * 0.5f;
 
             float3 direction = normalize(GetRayDirectionDFWS(int2(x, y), 0));
 

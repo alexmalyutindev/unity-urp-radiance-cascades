@@ -154,6 +154,7 @@ namespace AlexMalyutinDev.RadianceCascades
                     CameraData = data.CameraData,
                     Cascades = data.Cascades,
                     CascadesSizeTexel = data.CascadesSizeTexel,
+                    BlurredColor = data.BlurredColor,
                     MinMaxDepth = data.MinMaxDepth,
                     VarianceDepth = data.VarianceDepth,
                     RadianceSH = data.RadianceSH,

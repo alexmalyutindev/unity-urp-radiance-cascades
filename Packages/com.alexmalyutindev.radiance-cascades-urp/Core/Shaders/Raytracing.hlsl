@@ -5,7 +5,7 @@
 #include "Common.hlsl"
 #include "SoftCoverage.hlsl"
 
-static const half HLF_EPS = 1e-5h;
+static const half HLF_EPS = 1e-7h;
 static const half SQRT3 = sqrt(3.0h);
 
 struct Trapezoid
@@ -37,16 +37,16 @@ float LinearIntegral(float x)
 }
 
 //Integral [0..x] trapezoid(t) dt
-float IntegrateTrapezoid(Trapezoid trapezoid, float x)
+float IntegrateTrapezoid(Trapezoid trapezoid, half x)
 {
-    float constRange = min(abs(x - trapezoid.median), trapezoid.constHalfSize + trapezoid.linHalfSize);
-    float linRange = max(0.0f, constRange - trapezoid.constHalfSize);
-    float constInt = constRange;
-    float linInt = -LinearIntegral(linRange) / trapezoid.linHalfSize;
+    half constRange = min(abs(x - trapezoid.median), trapezoid.constHalfSize + trapezoid.linHalfSize);
+    half linRange = max(0.0f, constRange - trapezoid.constHalfSize);
+    half constInt = constRange;
+    half linInt = -LinearIntegral(linRange) / trapezoid.linHalfSize;
     return (x > trapezoid.median ? 1.0f : -1.0f) * trapezoid.height * (constInt + linInt);
 }
 
-IntegrationSector PrepareSector(float cascadePower)
+IntegrationSector PrepareSector(float2 probeMinMaxDepth, float2 depthMoments, float cascadePower)
 {
     const float4 directLight = float4(0.0f, 0.0f, 0.0f, -1.0f);
 
@@ -58,11 +58,13 @@ IntegrationSector PrepareSector(float cascadePower)
         half4(0.0h, 0.0h, 0.0h, 1.0h),
         half4(0.0h, 0.0h, 0.0h, 1.0h)
     );
+    return sector;
 
-    half sigma = 0.1f;
-    half2 minmax = float2(0.0f, HLF_EPS);
+    // TODO: Self occlusion!
+    half sigma = sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
+    half2 minMax = float2(step(probeMinMaxDepth.x, depthMoments.x), 1.0h);
 
-    Trapezoid trapezoid = GetVarianceTrapezoid(minmax, sigma);
+    Trapezoid trapezoid = GetVarianceTrapezoid(minMax, sigma);
 
     half prevOcclusion = IntegrateTrapezoid(trapezoid, 0.0f);
 
@@ -93,7 +95,7 @@ IntegrationSector PrepareSector(float cascadePower)
 void IntegrateDepthSector(
     float3 probeNormalVS, float3 probeCenterVS,
     float3 occluderMeanVS, float3 occluderUpperVS, float3 occluderThickVS,
-    float4 directLight,
+    half4 directLight,
     half sharpness,
     inout IntegrationSector sector
 )
@@ -101,9 +103,9 @@ void IntegrateDepthSector(
     half meanAngle = dot(probeNormalVS, normalize(occluderMeanVS - probeCenterVS)) * 0.5f + 0.5f;
     half upperAngle = dot(probeNormalVS, normalize(occluderUpperVS - probeCenterVS)) * 0.5f + 0.5f;
     half thickAngle = dot(probeNormalVS, normalize(occluderThickVS - probeCenterVS)) * 0.5f + 0.5f;
-    half sigma = max(HLF_EPS, upperAngle - meanAngle);
+    half sigma = max(HLF_EPS, meanAngle - upperAngle);
 
-    Trapezoid trapezoid = GetVarianceTrapezoid(float2(upperAngle, thickAngle), sigma);
+    Trapezoid trapezoid = GetVarianceTrapezoid(half2(upperAngle, 1.0h + sigma), sigma);
 
     half prevOcclusion = IntegrateTrapezoid(trapezoid, 0.0f);
 
@@ -142,8 +144,10 @@ half4 RayTracing_TrapezoidIntegration(
     const float depthThickness = 40.0f;
     const float stepSize = _RayScale;
 
+    float2 depthMoments = GetDepthMoments(probeCenterUV);
+
     IntegrationSector integrationSector[2];
-    integrationSector[0] = PrepareSector(cascadePower);
+    integrationSector[0] = PrepareSector(probeMinMaxDepth, depthMoments, cascadePower);
     integrationSector[1] = integrationSector[0];
 
     float3 probeViewDirectionVS = ReconstructPositionVS(probeCenterUV, 1.0f);
@@ -204,7 +208,14 @@ half4 RayTracing_SoftBins(
     const float depthThickness = 40.0f;
     const float stepSize = _RayScale;
 
-    IntegrationSector minSector = PrepareSector(cascadePower);
+    IntegrationSector minSector;
+    minSector.transmittance = 1.0h;
+    minSector.color = float4x4(
+        half4(0.0h, 0.0h, 0.0h, 1.0h),
+        half4(0.0h, 0.0h, 0.0h, 1.0h),
+        half4(0.0h, 0.0h, 0.0h, 1.0h),
+        half4(0.0h, 0.0h, 0.0h, 1.0h)
+    );
     IntegrationSector maxSector = minSector;
 
     float3 probeViewDirectionVS = ReconstructPositionVS(probeCenterUV, 1.0f);

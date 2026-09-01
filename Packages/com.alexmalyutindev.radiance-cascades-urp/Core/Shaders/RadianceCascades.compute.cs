@@ -123,6 +123,7 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.SetComputeMatrixParam(_compute, "_ViewToWorld", args.CameraData.GetViewMatrix().inverse);
 
             cmd.SetComputeTextureParam(_compute, kernel, "_RadianceCascades", args.Cascades);
+            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.BlurredColor, args.BlurredColor);
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.MinMaxDepth, args.MinMaxDepth);
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.VarianceDepth, args.VarianceDepth);
             cmd.SetComputeTextureParam(_compute, kernel, "_RadianceSH", args.RadianceSH);
@@ -158,6 +159,8 @@ namespace AlexMalyutinDev.RadianceCascades
             public UniversalCameraData CameraData;
             public TextureHandle Cascades;
             public Vector4 CascadesSizeTexel;
+
+            public TextureHandle BlurredColor;
             public TextureHandle MinMaxDepth;
             public TextureHandle VarianceDepth;
             public TextureHandle RadianceSH;
