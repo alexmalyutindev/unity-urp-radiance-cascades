@@ -75,6 +75,20 @@ float3 GetSceneLighting(float2 uv)
 
 ///////////////
 
+inline float4 GetRadianceWeighted(int2 coords, int2 offset, float4 weights)
+{
+    // TODO: Optimize boundary check!
+    float4 a = _RadianceCascades[coords + offset];
+    float4 b = _RadianceCascades[coords + int2(1, 0) + offset];
+    float4 c = _RadianceCascades[coords + int2(0, 1) + offset];
+    float4 d = _RadianceCascades[coords + int2(1, 1) + offset];
+
+    return a * weights.x
+        + b * weights.y
+        + c * weights.z
+        + d * weights.w;
+}
+
 inline float4 GetRadianceWeightedSafe(int2 coords, int2 offset, float4 weights)
 {
     // TODO: Optimize boundary check!
@@ -201,10 +215,10 @@ float4 LoadLowRadiance(
     UNITY_UNROLL for (int rayI = 1; rayI < 3; rayI++)
     {
         int2 offset_min = lowCascadeBase + neighbourRaysOffset[rayI];
-        float4 minProbeSample = GetRadianceWeightedSafe(lowProbeLocalId, offset_min, probeWeights_min);
+        float4 minProbeSample = GetRadianceWeighted(lowProbeLocalId, offset_min, probeWeights_min);
 
         int2 offset_max = lowCascadeBase + neighbourRaysOffset[rayI] + int2(halfCascadeBufferSizeX, 0);
-        float4 maxProbeSample = GetRadianceWeightedSafe(lowProbeLocalId, offset_max, probeWeights_max);
+        float4 maxProbeSample = GetRadianceWeighted(lowProbeLocalId, offset_max, probeWeights_max);
 
         nearProbeRadiance += minProbeSample * rayWeights[rayI];
         farProbeRadiance += maxProbeSample * rayWeights[rayI];
@@ -365,7 +379,7 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
     {
         float2 hiMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords, 0);
 
-        float2 bilinearOffsets = saturate(lowProbeContinuous - lowProbeBaseId);
+        float2 bilinearOffsets = frac(lowProbeContinuous); // saturate(lowProbeContinuous - lowProbeBaseId);
         float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
         bilinearWeights = bilinearWeights.zxzx * bilinearWeights.wwyy;
 
@@ -396,8 +410,9 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
     {
         for (int x = 0; x < 4; x++)
         {
-            float4 radianceMin = GetRadianceWeightedSafe(upperCascadeCoords, int2(x, -y) * lowCascadeSize, probeWeights_min);
-            float4 radianceMax = GetRadianceWeightedSafe(upperCascadeCoords, int2(x + 4, -y) * lowCascadeSize, probeWeights_max);
+            // TODO: Fix boundaries!
+            float4 radianceMin = GetRadianceWeighted(upperCascadeCoords, int2(x, -y) * lowCascadeSize, probeWeights_min);
+            float4 radianceMax = GetRadianceWeighted(upperCascadeCoords, int2(x + 4, -y) * lowCascadeSize, probeWeights_max);
 
             // TODO: Blend min and max probes properly!
             float4 radiance = (radianceMin + radianceMax) * 0.5f;
@@ -415,4 +430,12 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
     _RadianceSH[coords + int2(_CascadeSize.xy)]   = sh1;
     _RadianceSH[coords]                           = sh2;
     _RadianceSH[coords + int2(_CascadeSize.x, 0)] = sh3;
+    
+    // _RadianceSH[coords] = 
+    //     _RadianceCascades[upperCascadeCoords + int2(0, 0)] * probeWeights_min.x + 
+    //     _RadianceCascades[upperCascadeCoords + int2(1, 0)] * probeWeights_min.y +
+    //     _RadianceCascades[upperCascadeCoords + int2(0, 1)] * probeWeights_min.z +
+    //     _RadianceCascades[upperCascadeCoords + int2(1, 1)] * probeWeights_min.w;
+    //
+    // _RadianceSH[coords] = GetRadianceWeighted(upperCascadeCoords, 0, probeWeights_min);
 }
