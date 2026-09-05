@@ -64,10 +64,10 @@ public class TrapezoidSector : MonoBehaviour
 
         return transmittances;
     }
-
+    
+#if UNITY_EDITOR
     private void OnDrawGizmos()
     {
-#if UNITY_EDITOR
         Gizmos.matrix = transform.localToWorldMatrix;
         UnityEditor.Handles.matrix = transform.localToWorldMatrix;
         UnityEditor.Handles.zTest = CompareFunction.LessEqual;
@@ -117,7 +117,6 @@ public class TrapezoidSector : MonoBehaviour
         Gizmos.DrawSphere(occluderMeanVS, 0.01f);
         Gizmos.DrawSphere(occluderUpperVS, 0.01f);
         Gizmos.DrawSphere(occluderThickVS, 0.01f);
-#endif
     }
 
     private void DrawOccluder(Vector3 occluderMeanVS, Vector3 occluderUpperVS, float occluderStdAngle, float occluderAngle, float colorAlpha)
@@ -146,4 +145,5 @@ public class TrapezoidSector : MonoBehaviour
             Gizmos.DrawRay(Vector3.zero, direction * length);
         }
     }
+#endif
 }

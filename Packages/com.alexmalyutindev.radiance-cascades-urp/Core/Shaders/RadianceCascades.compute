@@ -4,21 +4,15 @@
 #include "Packages/com.alexmalyutindev.radiance-cascades-urp/Core/Shaders/Common.hlsl"
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/SphericalHarmonics.hlsl"
 
-// #define SIMPLE_RAYCASTING
-#define SMALL_FLT 1e-6
-
 // Input
 float _RayScale;
 float _CascadeLevel;
+
 float4 _ProbesCount;
-// _ProbesCount + Padding
-float4 _CascadeSize;
+float4 _CascadeSize; // _ProbesCount + Padding
 
-float4 _UpperCascadeSize;
 float4 _UpperProbesCount;
-
-float2 _VarianceDepthSize;
-float4x4 _InvProjectionMatrix;
+float4 _UpperCascadeSize;
 
 Texture2D<float2> _MinMaxDepth;
 Texture2D<float> _SmoothedDepth;
@@ -65,14 +59,14 @@ RWTexture2D<half4> _RadianceSH;
 
 float2 GetDepthMoments(float2 uv)
 {
-    // _CacadeLevel = 0 is x1/4 of target resolution,
+    // _CascadeLevel = 0 is x1/4 of target resolution,
     // _VarianceDepth is x1/2 of target resolution, then offseting mip level by 1.
     return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_VarianceDepth, uv, _CascadeLevel + 1).xy;
 }
 
 float3 GetSceneLighting(float2 uv)
 {
-    // _CacadeLevel = 0 is x1/4 of target resolution,
+    // _CascadeLevel = 0 is x1/4 of target resolution,
     // _BlurredColor is x1/2 of target resolution, then offseting mip level by 1.
     return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_BlurredColor, uv, _CascadeLevel + 1).rgb;
 }
@@ -147,7 +141,7 @@ float4 LoadLowRadiance(
     static const int2 neighbours[4] = {int2(0, 0), int2(1, 0), int2(0, 1), int2(1, 1)};
 
     // TODO: Add ProbesCount to clip padding
-    const int2 lowCascadeSize = floor(_UpperCascadeSize.xy); // floor(_CascadeSize * 0.5f);
+    const int2 lowCascadeSize = floor(_UpperCascadeSize.xy);
     int2 hiProbeId = coords % _CascadeSize.xy; // NOTE: Wrap coords to cascade area with padding
 
     float2 lowProbeContinuous = hiProbeId * 0.5f - 0.25f;
@@ -167,10 +161,10 @@ float4 LoadLowRadiance(
     //    | A00 |     | B10 |     | C20 |
     // ---00----10----20----30----40----40
     //    |     |     |     |     |     |
-    int2 lowCascadeCoords = floor(coords * 0.5f);
-    lowCascadeCoords = floor(lowCascadeCoords / float2(lowCascadeSize)) * lowCascadeSize;
-    lowCascadeCoords.x *= 2;
-    lowCascadeCoords.y += lowCascadeSize.y * 4;
+    int2 lowCascadeBase = floor(coords * 0.5f);
+    lowCascadeBase = floor(lowCascadeBase / float2(lowCascadeSize)) * lowCascadeSize;
+    lowCascadeBase.x *= 2;
+    lowCascadeBase.y += lowCascadeSize.y * 4;
 
     // TODO: Remove hardcode!
     int depthLevel = _CascadeLevel + 2;
@@ -194,10 +188,10 @@ float4 LoadLowRadiance(
     int2 offset = int2(lowCascadeSize.x, 0);
     int halfCascadeBufferSizeX = floor(_CascadeBufferSize.x / 2);
     int2 neighbourRaysOffset[4] = {
-        -offset + int2(halfCascadeBufferSizeX, 0) * (lowCascadeCoords.x < offset.x),
+        -offset + int2(halfCascadeBufferSizeX, 0) * (lowCascadeBase.x < offset.x),
         int2(0, 0),
         offset,
-        2 * offset - int2(halfCascadeBufferSizeX, 0) * (lowCascadeCoords.x + offset.x > halfCascadeBufferSizeX),
+        2 * offset - int2(halfCascadeBufferSizeX, 0) * (lowCascadeBase.x + offset.x > halfCascadeBufferSizeX),
     };
 
     nearProbeRadiance = 0.0f;
@@ -206,10 +200,10 @@ float4 LoadLowRadiance(
 
     UNITY_UNROLL for (int rayI = 1; rayI < 3; rayI++)
     {
-        int2 offset_min = lowCascadeCoords + neighbourRaysOffset[rayI];
+        int2 offset_min = lowCascadeBase + neighbourRaysOffset[rayI];
         float4 minProbeSample = GetRadianceWeightedSafe(lowProbeLocalId, offset_min, probeWeights_min);
 
-        int2 offset_max = lowCascadeCoords + neighbourRaysOffset[rayI] + int2(halfCascadeBufferSizeX, 0);
+        int2 offset_max = lowCascadeBase + neighbourRaysOffset[rayI] + int2(halfCascadeBufferSizeX, 0);
         float4 maxProbeSample = GetRadianceWeightedSafe(lowProbeLocalId, offset_max, probeWeights_max);
 
         nearProbeRadiance += minProbeSample * rayWeights[rayI];
@@ -362,6 +356,7 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
     int2 lowCascadeSize = _UpperCascadeSize.xy;
     int2 lowProbesCount = max(int2(1, 1), _ProbesCount.xy / 2);
     float2 lowProbeContinuous = coords * 0.5f - 0.25f;
+
     int2 lowProbeBaseId = (int2)floor(lowProbeContinuous);
     int2 lowProbeLocalId = clamp(lowProbeBaseId, 0, lowProbesCount - 2);
 
