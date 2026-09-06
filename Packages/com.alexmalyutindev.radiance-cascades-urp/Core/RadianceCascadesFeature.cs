@@ -9,7 +9,7 @@ namespace AlexMalyutinDev.RadianceCascades
     {
         public RadianceCascadeResources Resources;
 
-        private RadinceCascadesPass _radinceCascadesPass;
+        private RadianceCascadesPass _radianceCascadesPass;
 
         private MinMaxDepthPass _minMaxDepthPass;
         private SmoothedDepthPass _smoothedDepthPass;
@@ -41,9 +41,9 @@ namespace AlexMalyutinDev.RadianceCascades
             {
                 renderPassEvent = RenderPassEvent.AfterRenderingDeferredLights
             };
-            _radinceCascadesPass = new RadinceCascadesPass(Resources)
+            _radianceCascadesPass = new RadianceCascadesPass(Resources)
             {
-                renderPassEvent = RenderPassEvent.AfterRenderingDeferredLights,
+                renderPassEvent = RenderPassEvent.AfterRenderingSkybox,
             };
         }
 
@@ -58,7 +58,7 @@ namespace AlexMalyutinDev.RadianceCascades
             var targetWidth = renderingData.cameraData.cameraTargetDescriptor.width;
             var targetHeight = renderingData.cameraData.cameraTargetDescriptor.height;
 
-            var cascade0Size = RadinceCascadesPass.GetCascade0Size(targetWidth, targetHeight);
+            var cascade0Size = RadianceCascadesPass.GetCascade0Size(targetWidth, targetHeight);
             _radianceCascadesRenderingData.Cascade0Size = new Vector2Int(
                 Mathf.FloorToInt(cascade0Size.x / 2), 
                 Mathf.FloorToInt(cascade0Size.y / 2)
@@ -67,13 +67,13 @@ namespace AlexMalyutinDev.RadianceCascades
             renderer.EnqueuePass(_minMaxDepthPass);
             renderer.EnqueuePass(_varianceDepthPass);
             renderer.EnqueuePass(_blurredColorBufferPass);
-            renderer.EnqueuePass(_radinceCascadesPass);
+            renderer.EnqueuePass(_radianceCascadesPass);
         }
 
         protected override void Dispose(bool disposing)
         {
             _minMaxDepthPass?.Dispose();
-            _radinceCascadesPass?.Dispose();
+            _radianceCascadesPass?.Dispose();
         }
     }
 }

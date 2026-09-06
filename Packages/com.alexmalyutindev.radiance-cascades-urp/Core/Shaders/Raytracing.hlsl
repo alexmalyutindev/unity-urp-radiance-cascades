@@ -200,7 +200,7 @@ half4 RayTracing_SoftBins(
     float2 probeCenterUV,
     float2 rayDirection,
     float2 range,
-    float cascadePower,
+    float sharpness,
     out half4x4 nearSectorRadiance,
     out half4x4 farSectorRadiance
 )
@@ -238,7 +238,7 @@ half4 RayTracing_SoftBins(
     float2 directionUV = stepSize * rayDirection;
 
     UNITY_LOOP
-    for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)
+    for (float rayStep = range.x; rayStep <= range.y; rayStep += 1.0f)
     {
         float2 rayUV = probeCenterUV + max(0.02f, rayStep) * directionUV;
 
@@ -270,7 +270,7 @@ half4 RayTracing_SoftBins(
             float invCurve  = max(FLT_EPS, (halfRange + curveTerm) - distConst);
             float rampSlope = min(1.0, halfRange / max(FLT_EPS, curveTerm));
 
-            AccumulateSoftBins(sectors[sectorId], directLight, binCenter, distConst, invCurve, rampSlope, cascadePower);
+            AccumulateSoftBins(sectors[sectorId], directLight, binCenter, distConst, invCurve, rampSlope, sharpness);
         } 
     }
 

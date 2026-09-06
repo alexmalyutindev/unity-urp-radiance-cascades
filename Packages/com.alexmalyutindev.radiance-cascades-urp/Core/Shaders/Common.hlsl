@@ -166,8 +166,7 @@ float3 GetRayDirectionWS(float2 angleId, float cascadeLevel)
     sincos(theta, sinCosTheta.x, sinCosTheta.y);
 
     // float z = -(angleId.y / 4.0f - 0.375f) * 2.0f;
-    float z = -sinCosTheta.y;
-    float3 ray = normalize(float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.x * sinCosPhi.x, z));
+    float3 ray = normalize(float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.x * sinCosPhi.x, sinCosTheta.y));
     return mul(_ViewToWorld, float4(ray, 0)).xyz;
 }
 

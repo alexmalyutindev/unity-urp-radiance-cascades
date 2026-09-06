@@ -23,10 +23,10 @@ RenderSettings:
   m_AmbientSkyColor: {r: 0.062222224, g: 0.068055555, b: 0.07, a: 1}
   m_AmbientEquatorColor: {r: 0.15220287, g: 0.16768114, b: 0.17799999, a: 1}
   m_AmbientGroundColor: {r: 0.092, g: 0.085185185, b: 0.06928395, a: 1}
-  m_AmbientIntensity: 0.3
-  m_AmbientMode: 3
+  m_AmbientIntensity: 0
+  m_AmbientMode: 0
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 0}
+  m_SkyboxMaterial: {fileID: 2100000, guid: 265b484188b994ad5a1bd28ef95eb571, type: 2}
   m_HaloStrength: 0.5
   m_FlareStrength: 0
   m_FlareFadeSpeed: 3
@@ -93,7 +93,7 @@ LightmapSettings:
     m_ExportTrainingData: 0
     m_TrainingDataDestination: TrainingData
     m_LightProbeSampleCountMultiplier: 4
-  m_LightingDataAsset: {fileID: 112000000, guid: 374d2be7e22ab470eaae36769af190b6,
+  m_LightingDataAsset: {fileID: 112000000, guid: 6b84386eb9a94490f8c8e4d70b8e5a5e,
     type: 2}
   m_LightingSettings: {fileID: 0}
 --- !u!196 &4
@@ -268,7 +268,7 @@ Camera:
   m_GameObject: {fileID: 330585543}
   m_Enabled: 1
   serializedVersion: 2
-  m_ClearFlags: 2
+  m_ClearFlags: 1
   m_BackGroundColor: {r: 0, g: 0, b: 0, a: 1}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2

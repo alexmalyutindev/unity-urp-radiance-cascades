@@ -1,3 +1,4 @@
+using System;
 using System.Buffers;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -6,7 +7,7 @@ using UnityEngine.Rendering.Universal;
 
 namespace AlexMalyutinDev.RadianceCascades
 {
-    public class RadianceCascadesDirectionFirstCS
+    public class RadianceCascadesDirectionFirstCS : IDisposable
     {
         private readonly ComputeShader _compute;
         private readonly int _renderAndMergeKernel;
@@ -19,6 +20,9 @@ namespace AlexMalyutinDev.RadianceCascades
         private readonly LocalKeyword _bilateralKw;
         private readonly ArrayPool<Vector2Int> _vector2IntPool;
 
+        private readonly Vector4[] _packedSH;
+        private readonly ComputeBuffer _shBuffer;
+
         public RadianceCascadesDirectionFirstCS(ComputeShader compute)
         {
             _compute = compute;
@@ -28,6 +32,15 @@ namespace AlexMalyutinDev.RadianceCascades
 
             _renderMergeSampler = new ProfilingSampler("RadianceCascade.RenderMerge");
             _combineShSampler = new ProfilingSampler("RadianceCascade.CombineSH");
+
+            _packedSH = new Vector4[7];
+            _shBuffer = new ComputeBuffer(7, sizeof(float) * 4);
+            _shBuffer.name = "_SHCoefficients";
+        }
+
+        public void Dispose()
+        {
+            _shBuffer.Release();
         }
 
         public void RenderMerge(ComputeCommandBuffer cmd, ref RenderMergeArgs args)
@@ -59,7 +72,11 @@ namespace AlexMalyutinDev.RadianceCascades
 
             cmd.SetComputeFloatParam(_compute, "_RayScale", args.RayScale);
 
-            const int maxCascadeLevel = 5;
+            UpdatePackedSHData(RenderSettings.ambientProbe, _packedSH);
+            cmd.SetBufferData(_shBuffer, _packedSH);
+            cmd.SetComputeBufferParam(_compute, kernel, "_SHCoefficients", _shBuffer);
+
+            const int maxCascadeLevel = 4;
             var cascadeSizes = _vector2IntPool.Rent(maxCascadeLevel + 2);
             var probesCounts = _vector2IntPool.Rent(maxCascadeLevel + 2);
             FillCascadePyramid(args.Cascade0Size, args.Cascade0ProbesCount, ref cascadeSizes, ref probesCounts);
@@ -135,6 +152,21 @@ namespace AlexMalyutinDev.RadianceCascades
             int height = Mathf.FloorToInt(args.CascadeProbesCountWithPadding.y) * 2;
             // NOTE: Hardcoded groupSize!
             cmd.DispatchCompute(_compute, kernel, width / 8, height / 4, 1);
+        }
+        
+        void UpdatePackedSHData(SphericalHarmonicsL2 sh, Vector4[] packedSH)
+        {
+            // Mathematical conversion from Unity's CPU layout to GPU packed layout
+            for (int i = 0; i < 3; i++) // 0: Red, 1: Green, 2: Blue
+            {
+                // Linear (L1) terms mixed with the Constant (L0) term
+                packedSH[i] = new Vector4(sh[i, 3], sh[i, 1], sh[i, 2], sh[i, 0] - sh[i, 6]);
+                // Quadratic (L2) terms part 1
+                packedSH[i + 3] = new Vector4(sh[i, 4], sh[i, 5], sh[i, 6] * 3.0f, sh[i, 7]);
+            }
+
+            // Quadratic (L2) final term part 2
+            packedSH[6] = new Vector4(sh[0, 8], sh[1, 8], sh[2, 8], 1.0f);
         }
 
         private static Vector4 ToSizeTexel(Vector2Int size)

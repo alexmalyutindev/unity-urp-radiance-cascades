@@ -44,8 +44,8 @@ void AccumulateSoftBins(
         float coverage = EvaluateSoftCoverage(x, center, distConst, invCurve, rampSlope);
         float falloff = pow(clamp(1.0 - (coverage - prevCoverage) * 16.0, 0.0, 1.0), sharpness);
 
-        int row = bin / 4;
-        int col = bin % 4;
+        int row = 3 - bin / 4;
+        int col = 3 - bin % 4;
 
         sector.color[row] += (signedColor * sector.transmittance[row][col]) * (1.0 - falloff) * 0.25f;
         sector.transmittance[row][col] *= falloff;
