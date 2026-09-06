@@ -104,6 +104,20 @@ inline float4 GetRadianceWeightedSafe(int2 coords, int2 offset, float4 weights)
         + d * weights.w;
 }
 
+float2 SampleMinMaxDepth(uint2 coords, float4 bilinearWeights, int depthLevel)
+{
+    static const int2 neighbours[4] = {int2(0, 0), int2(1, 0), int2(0, 1), int2(1, 1)};
+
+    float2 minMaxDepthBilinear = float2(0.0f, 0.0f);
+    UNITY_UNROLL for (int i = 0; i < 4; i++)
+    {
+        float2 minMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords + neighbours[i], depthLevel);
+        minMaxDepthBilinear += minMaxDepth * bilinearWeights[i];
+    }
+
+    return minMaxDepthBilinear;
+}
+
 float GetMinMaxDepthThickness(uint2 coords, int depthLevel, float4 bilinearWeights, 
     out float4 lowDepthABCD_min, out float4 lowDepthABCD_max)
 {
@@ -169,7 +183,7 @@ float4 LoadLowRadiance(
     // ---00----10----20----30----40----40
     //    |     |     |     |     |     |
     int2 lowCascadeBase = floor(coords * 0.5f);
-    lowCascadeBase = floor(lowCascadeBase / float2(lowCascadeSize)) * lowCascadeSize;
+    lowCascadeBase = floor(lowCascadeBase * _UpperCascadeSize.zw) * _UpperCascadeSize.xy;
     lowCascadeBase.x *= 2;
     lowCascadeBase.y += lowCascadeSize.y * 4;
 
@@ -285,9 +299,68 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
        radiances[1]
    );
 
-    if (_CascadeLevel < 4)
+    if (_CascadeLevel < 5)
     {
         half4 lowRadiances[2] = { half4(0.0h, 0.0h, 0.0h, 0.0h), half4(0.0h, 0.0h, 0.0h, 0.0h) };
+
+        // TODO: Load all depth sectors.
+        // if (_CascadeLevel == 0)
+        {
+            // TODO: Sample bilinear upper radiance and blend by depth. 
+            float2 lowProbeContinuous = probeCenterUV * _UpperProbesCount.xy - 0.5f;
+            int2 lowProbeBaseId = (int2)floor(lowProbeContinuous);
+            // TODO: Fix border samples!
+            int2 lowProbeLocalId = clamp(lowProbeBaseId, 0, _UpperProbesCount.xy - 2);
+
+            float2 bilinearOffsets = frac(lowProbeContinuous);
+            float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
+            bilinearWeights = bilinearWeights.zxzx * bilinearWeights.wwyy;
+
+            half4x4 mergedRadiances[2];
+            mergedRadiances[0] = mergedRadiances[1] = 0.0h;
+
+            for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
+            {
+                for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
+                {
+                    int2 cascadeBaseOffset = int2(
+                        floor(coords.x * _CascadeSize.z) * _CascadeSize.x + depthLayerId * _CascadeBufferSize.x / 2,
+                        (4 + depthSectorId) * _UpperCascadeSize.y
+                    );
+                
+                    for (uint sliceId = 0; sliceId < 2; sliceId++)
+                    {
+                        mergedRadiances[depthLayerId][depthSectorId] += GetRadianceWeighted(lowProbeLocalId, cascadeBaseOffset, bilinearWeights) * 0.5f;
+                        cascadeBaseOffset.x += _UpperCascadeSize.x;
+                    }
+                }
+            }
+
+            float2 lowMinMaxDepth = SampleMinMaxDepth(lowProbeLocalId, bilinearWeights, _CascadeLevel + 2);
+            float depthThickness = max(0.01f, lowMinMaxDepth.y - lowMinMaxDepth.x);
+            float2 depthLerp = saturate((probeMinMaxDepth - lowMinMaxDepth.x) / depthThickness);
+
+            uint2 targetCoords = int2(id.x, id.y + 4 * floor(_CascadeSize.y));
+            for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
+            {
+                float4 mergedRadianceMin = mergedRadiances[0][depthSectorId];
+                float4 mergedRadianceMax = mergedRadiances[1][depthSectorId];
+
+                // TODO: Lerp depth layers!
+                for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
+                {
+                    int2 targetOffset = int2(depthLayerId * _CascadeBufferSize.x / 2, _CascadeSize.y * depthSectorId);
+
+                    float4 radiance = radiances[depthLayerId][3 - depthSectorId]; // TODO: Why radiances sectors is inverted?
+                    float4 mergedRadiance = lerp(mergedRadianceMin, mergedRadianceMax, depthLerp[depthLayerId]);
+                    radiance.rgb += mergedRadiance.rgb * radiance.a;
+                    radiance.a *= mergedRadiance.a;
+
+                    _RadianceCascades[targetCoords + targetOffset] = radiance;
+                }
+            }
+            return;
+        }
 
         UNITY_UNROLL
         for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
@@ -304,19 +377,21 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
             );
 
             UNITY_UNROLL
-            for (uint probeId = 0; probeId < 2u; ++probeId)
+            for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
             {
-                half4 lowRadiance = lowRadiances[probeId];
-                half4 currentRadiance = radiances[probeId][depthSectorId];
+                half4 lowRadiance = lowRadiances[depthLayerId];
+                half4 currentRadiance = radiances[depthLayerId][depthSectorId];
 
-                radiances[probeId][depthSectorId].rgb = lowRadiance.rgb * currentRadiance.a + currentRadiance.rgb;
-                radiances[probeId][depthSectorId].a = currentRadiance.a * lowRadiance.a;
+                radiances[depthLayerId][depthSectorId].rgb = lowRadiance.rgb * currentRadiance.a + currentRadiance.rgb;
+                radiances[depthLayerId][depthSectorId].a = currentRadiance.a * lowRadiance.a;
             }
         }
     }
     else
     {
         // TODO: Sample cubemap
+        // SampleSH();
+        return;
     }
 
     for (int depthRayId = 0; depthRayId < 4; depthRayId++)
