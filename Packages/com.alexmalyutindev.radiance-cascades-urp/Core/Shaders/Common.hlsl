@@ -149,7 +149,7 @@ float3 Intersect(float3 planeP, float3 planeN, float3 rayP, float3 rayD)
 
 static float4 DirectionFirstRayZ = float4(-2.0f, -1.0f, 1.0f, 2.0f);
 
-float3 GetRayDirectionDFWS(float2 angleId, float cascadeLevel)
+float3 GetRayDirectionWS(float2 angleId, float cascadeLevel)
 {
     float deltaPhi = TWO_PI * pow(0.5f, cascadeLevel) * 0.25f; // 1/4
     static const float deltaTheta = PI * 0.25f;
@@ -165,8 +165,8 @@ float3 GetRayDirectionDFWS(float2 angleId, float cascadeLevel)
     sincos(phi, sinCosPhi.x, sinCosPhi.y);
     sincos(theta, sinCosTheta.x, sinCosTheta.y);
 
-    float z = -(angleId.y / 4.0f - 0.375f) * 2.0f;
-    // z = sinCosTheta.y;
+    // float z = -(angleId.y / 4.0f - 0.375f) * 2.0f;
+    float z = -sinCosTheta.y;
     float3 ray = normalize(float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.x * sinCosPhi.x, z));
     return mul(_ViewToWorld, float4(ray, 0)).xyz;
 }

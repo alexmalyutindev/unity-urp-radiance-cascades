@@ -59,7 +59,7 @@ namespace AlexMalyutinDev.RadianceCascades
 
             cmd.SetComputeFloatParam(_compute, "_RayScale", args.RayScale);
 
-            const int maxCascadeLevel = 4;
+            const int maxCascadeLevel = 5;
             var cascadeSizes = _vector2IntPool.Rent(maxCascadeLevel + 2);
             var probesCounts = _vector2IntPool.Rent(maxCascadeLevel + 2);
             FillCascadePyramid(args.Cascade0Size, args.Cascade0ProbesCount, ref cascadeSizes, ref probesCounts);

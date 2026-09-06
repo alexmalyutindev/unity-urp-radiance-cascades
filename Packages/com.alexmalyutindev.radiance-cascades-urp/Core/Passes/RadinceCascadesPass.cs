@@ -170,6 +170,7 @@ namespace AlexMalyutinDev.RadianceCascades
         {
             public Material Material;
             public UniversalCameraData CameraData;
+            public Vector4 UpperCascadeSize;
 
             public TextureHandle MinMaxDepth;
             public TextureHandle RadianceCascades;
@@ -193,6 +194,8 @@ namespace AlexMalyutinDev.RadianceCascades
 
             passData.Material = _blitMaterial;
             passData.CameraData = cameraData;
+
+            passData.UpperCascadeSize = ToSizeTexel(new Vector2Int(cameraData.scaledWidth / 2, cameraData.scaledHeight / 2));
 
             passData.FrameColor = resourceData.gBuffer[0];
             builder.UseTexture(passData.FrameColor);
@@ -220,6 +223,7 @@ namespace AlexMalyutinDev.RadianceCascades
                 }
                 else
                 {
+                    context.cmd.SetGlobalVector("_UpperProbesCount", data.UpperCascadeSize);
                     context.cmd.SetGlobalMatrix("_ViewToWorld", data.CameraData.GetViewMatrix().inverse);
                     context.cmd.SetGlobalTexture("_MinMaxDepth", data.MinMaxDepth);
 
@@ -240,6 +244,11 @@ namespace AlexMalyutinDev.RadianceCascades
                 desc.width, desc.height,
                 1.0f / desc.width, 1.0f / desc.height
             );
+        }
+
+        private static Vector4 ToSizeTexel(Vector2Int size)
+        {
+            return new Vector4(size.x, size.y, 1.0f / size.x, 1.0f / size.y);
         }
 
         public static Vector4 GetCascade0Size(int targetWidth, int targetHeight)

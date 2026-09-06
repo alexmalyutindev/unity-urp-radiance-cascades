@@ -61,8 +61,9 @@ IntegrationSector PrepareSector(float2 probeMinMaxDepth, float2 depthMoments, fl
     return sector;
 
     // TODO: Self occlusion!
-    half sigma = sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
-    half2 minMax = float2(step(probeMinMaxDepth.x, depthMoments.x), 1.0h);
+    half sigma = sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x)) * 100.0f;
+    // half2 minMax = float2(step(probeMinMaxDepth.x, depthMoments.x), 1.0h);
+    half2 minMax = float2(0.5h, 1.0h);
 
     Trapezoid trapezoid = GetVarianceTrapezoid(minMax, sigma);
 
@@ -105,7 +106,7 @@ void IntegrateDepthSector(
     half thickAngle = dot(probeNormalVS, normalize(occluderThickVS - probeCenterVS)) * 0.5f + 0.5f;
     half sigma = max(HLF_EPS, meanAngle - upperAngle);
 
-    Trapezoid trapezoid = GetVarianceTrapezoid(half2(upperAngle, 1.0h + sigma), sigma);
+    Trapezoid trapezoid = GetVarianceTrapezoid(half2(upperAngle, thickAngle), sigma);
 
     half prevOcclusion = IntegrateTrapezoid(trapezoid, 0.0f);
 
@@ -199,7 +200,6 @@ half4 RayTracing_SoftBins(
     float2 probeCenterUV,
     float2 rayDirection,
     float2 range,
-    float4 outputSizeTexel,
     float cascadePower,
     out half4x4 nearSectorRadiance,
     out half4x4 farSectorRadiance
@@ -217,19 +217,30 @@ half4 RayTracing_SoftBins(
         half4(0.0h, 0.0h, 0.0h, 1.0h)
     );
     IntegrationSector maxSector = minSector;
+    
+    IntegrationSector sectors[2];
+    sectors[0].color = float4x4(
+        half4(0.0h, 0.0h, 0.0h, 1.0h),
+        half4(0.0h, 0.0h, 0.0h, 1.0h),
+        half4(0.0h, 0.0h, 0.0h, 1.0h),
+        half4(0.0h, 0.0h, 0.0h, 1.0h)
+    );
+    sectors[0].transmittance = 1.0h;
+    sectors[1] = sectors[0];
 
     float3 probeViewDirectionVS = ReconstructPositionVS(probeCenterUV, 1.0f);
-    float3 probeNormalVS = normalize(probeViewDirectionVS);
+    float3 probeNormalVS = -normalize(probeViewDirectionVS);
 
-    float3 minProbeCenterVS = probeViewDirectionVS * probeMinMaxDepth.x;
-    float3 maxProbeCenterVS = probeViewDirectionVS * probeMinMaxDepth.y;
-
-    float2 directionUV = stepSize * rayDirection * outputSizeTexel.zw;
+    float3 probeCenterVS[2];
+    probeCenterVS[0] = probeViewDirectionVS * probeMinMaxDepth.x;
+    probeCenterVS[1] = probeViewDirectionVS * probeMinMaxDepth.y;
+    
+    float2 directionUV = stepSize * rayDirection;
 
     UNITY_LOOP
     for (float rayStep = range.x; rayStep < range.y; rayStep += 1.0f)
     {
-        float2 rayUV = probeCenterUV + (rayStep + 0.5f) * directionUV;
+        float2 rayUV = probeCenterUV + max(0.02f, rayStep) * directionUV;
 
         if (any(rayUV > 1.0f || rayUV < 0.0f)) break;
 
@@ -240,14 +251,16 @@ half4 RayTracing_SoftBins(
 
         float meanDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
 
-        {
-            float3 occluderNearVS = viewDirectionVS * depthMoments.x;
-            float3 occluderFarVS = viewDirectionVS * (depthMoments.x + depthThickness);
-            float3 occluderMeanVS = viewDirectionVS * meanDepth;
+        float3 occluderNearVS = viewDirectionVS * depthMoments.x;
+        float3 occluderFarVS = viewDirectionVS * (depthMoments.x + depthThickness);
+        float3 occluderMeanVS = viewDirectionVS * meanDepth;
 
-            float binNear = dot(probeNormalVS, normalize(occluderNearVS - minProbeCenterVS)) * 0.5f + 0.5f;
-            float binVarFar = dot(probeNormalVS, normalize(occluderMeanVS - minProbeCenterVS)) * 0.5f + 0.5f;
-            float binThick = dot(probeNormalVS, normalize(occluderFarVS - minProbeCenterVS)) * 0.5f + 0.5f;
+        UNITY_UNROLL
+        for (uint sectorId = 0u; sectorId < 2u; sectorId++)
+        {
+            float binNear = dot(probeNormalVS, normalize(occluderNearVS - probeCenterVS[sectorId])) * 0.5f + 0.5f;
+            float binVarFar = dot(probeNormalVS, normalize(occluderMeanVS - probeCenterVS[sectorId])) * 0.5f + 0.5f;
+            float binThick = dot(probeNormalVS, normalize(occluderFarVS - probeCenterVS[sectorId])) * 0.5f + 0.5f;
 
             float curveTerm = SQRT3 * (binNear - binVarFar);
             float halfRange = (binNear - binThick) * 0.5;
@@ -257,33 +270,13 @@ half4 RayTracing_SoftBins(
             float invCurve  = max(FLT_EPS, (halfRange + curveTerm) - distConst);
             float rampSlope = min(1.0, halfRange / max(FLT_EPS, curveTerm));
 
-            AccumulateSoftBins(minSector, directLight, binCenter, distConst, invCurve, rampSlope, cascadePower);
-        }
-
-        {
-            float3 occluderNearVS = viewDirectionVS * depthMoments.x;
-            float3 occluderFarVS = viewDirectionVS * (depthMoments.x + depthThickness);
-            float3 occluderMeanVS = viewDirectionVS * meanDepth;
-
-            float binNear = dot(probeNormalVS, normalize(occluderNearVS - maxProbeCenterVS)) * 0.5f + 0.5f;
-            float binVarFar = dot(probeNormalVS, normalize(occluderMeanVS - maxProbeCenterVS)) * 0.5f + 0.5f;
-            float binThick = dot(probeNormalVS, normalize(occluderFarVS - maxProbeCenterVS)) * 0.5f + 0.5f;
-
-            float curveTerm = SQRT3 * (binNear - binVarFar);
-            float halfRange = (binNear - binThick) * 0.5;
-            float sumRange  = binThick + binNear;
-            float binCenter = sumRange * 0.5;
-            float distConst = abs(halfRange - curveTerm);
-            float invCurve  = max(FLT_EPS, (halfRange + curveTerm) - distConst);
-            float rampSlope = min(1.0, halfRange / max(FLT_EPS, curveTerm));
-
-            AccumulateSoftBins(maxSector, directLight, binCenter, distConst, invCurve, rampSlope, cascadePower);
-        }
+            AccumulateSoftBins(sectors[sectorId], directLight, binCenter, distConst, invCurve, rampSlope, cascadePower);
+        } 
     }
 
-    nearSectorRadiance = minSector.color;
-    farSectorRadiance = maxSector.color;
-    return float4(maxProbeCenterVS, 0.0f);
+    nearSectorRadiance = sectors[0].color;
+    farSectorRadiance = sectors[1].color;
+    return 0.0f;
 }
 
 #endif

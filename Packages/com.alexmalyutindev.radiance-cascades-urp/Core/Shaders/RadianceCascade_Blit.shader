@@ -370,7 +370,7 @@ Shader "Hidden/RadianceCascade/Blit"
                             0
                         );
 
-                        float3 direction = GetRayDirectionDFWS(float2(x, y), 0);
+                        float3 direction = GetRayDirectionWS(float2(x, y), 0);
                         float NdotL = max(0, dot(direction, normalWS));
                         float4 radiance = lerp(radianceMin, radianceMax, depthWeight);
                         color += radiance * NdotL;
@@ -481,6 +481,7 @@ Shader "Hidden/RadianceCascade/Blit"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
             #include "Common.hlsl"
 
+            float4 _UpperProbesCount;
             float4 _BlitTexture_TexelSize;
             TEXTURE2D_X(_BlitTexture);
             
@@ -634,7 +635,11 @@ Shader "Hidden/RadianceCascade/Blit"
                 half4 c = LOAD_TEXTURE2D(_BlitTexture, coords + int2(0, 1) * insideBounds);
                 half4 d = LOAD_TEXTURE2D(_BlitTexture, coords + int2(1, 1) * insideBounds);
 
-                return a * bilinearWeights.x + b * bilinearWeights.y + c * bilinearWeights.z + d * bilinearWeights.w;
+                return 
+                    a * bilinearWeights.x +
+                    b * bilinearWeights.y +
+                    c * bilinearWeights.z +
+                    d * bilinearWeights.w;
             }
             
             float GetMinMaxDepthThickness(uint2 coords, int depthLevel, float4 bilinearWeights, 
@@ -661,14 +666,14 @@ Shader "Hidden/RadianceCascade/Blit"
 
             half4 Fragment(Varyings input) : SV_TARGET
             {
-                half4 gbuffer0 = SAMPLE_TEXTURE2D_LOD(_GBuffer0, sampler_PointClamp, input.texcoord, 0);
-                float3 normalWS = SAMPLE_TEXTURE2D_LOD(_GBuffer2, sampler_PointClamp, input.texcoord, 0);
-                float depth = LinearEyeDepth(LoadSceneDepth(input.positionCS), _ZBufferParams); 
-
                 int2 coords = floor(input.positionCS.xy);
-                float2 lowProbeContinuous = coords * 0.5f - 0.25f;
+                half4 gbuffer0 = LOAD_TEXTURE2D_LOD(_GBuffer0, coords, 0);
+                float3 normalWS = LOAD_TEXTURE2D_LOD(_GBuffer2, coords, 0);
+                float depth = LinearEyeDepth(LoadSceneDepth(coords), _ZBufferParams); 
+
+                float2 lowProbeContinuous = input.texcoord * _UpperProbesCount.xy - 0.5f;
                 int2 lowProbeBaseId = (int2)floor(lowProbeContinuous);
-                float2 bilinearOffsets = saturate(lowProbeContinuous - lowProbeBaseId);
+                float2 bilinearOffsets = frac(lowProbeContinuous);
                 float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
                 bilinearWeights = bilinearWeights.zxzx * bilinearWeights.wwyy;
 
@@ -677,8 +682,8 @@ Shader "Hidden/RadianceCascade/Blit"
                 float depthThickness = GetMinMaxDepthThickness(lowProbeBaseId, 0, bilinearWeights, lowDepthABCD_min, lowDepthABCD_max);
                 float4 lowDepthABCD = (lowDepthABCD_min + lowDepthABCD_max) * 0.5f;
                 
-                const float sharpness = 1.0f;
-                half4 probeWeights = exp2(-sharpness * depthThickness * abs(depth - lowDepthABCD));
+                const float sharpness = 10.0f;
+                half4 probeWeights = exp2(-sharpness * depthThickness * abs(depth - lowDepthABCD)) + 0.0001f;
                 probeWeights = NormalizeWights(probeWeights * bilinearWeights);
 
                 int2 cascadeSize = floor(_BlitTexture_TexelSize.zw * 0.5f);
