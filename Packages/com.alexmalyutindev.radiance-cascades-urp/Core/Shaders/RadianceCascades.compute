@@ -392,11 +392,11 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
         _RadianceSH[coords] = float4(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
-    
+
     float2 probeMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords, 0);
     float2 probeCenterUV = (coords + 0.5f) * _ProbesCount.zw;
     int2 range = int2(0, 1);
-    const float cascadeExponent = 0.5f;
+    const float sharpness = 0.5f;
 
     int2 lowCascadeSize = _UpperCascadeSize.xy;
     float2 lowProbeContinuous = probeCenterUV * _UpperProbesCount.xy - 0.5f;
@@ -405,84 +405,83 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
     // TODO: Fix borders sampling!
     int2 lowProbeLocalId = clamp(lowProbeBaseId, 0, _UpperProbesCount.xy - 2);
 
-    // TODO: Make func!
-    float4 probeWeights_min, probeWeights_max;
+    float2 bilinearOffsets = frac(lowProbeContinuous);
+    float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
+    bilinearWeights = bilinearWeights.zxzx * bilinearWeights.wwyy;
+
+    const int halfCascadeBufferSize = _CascadeBufferSize / 2;
+
+    half4x4 mergedRadiances[2];
+    mergedRadiances[0] = mergedRadiances[1] = 0.0h;
+
+    for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
     {
-        float2 hiMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, coords, 0);
+        for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
+        {
+            int2 cascadeBaseOffset = int2(
+                depthLayerId * halfCascadeBufferSize.x,
+                (4 + depthSectorId) * lowCascadeSize.y
+            );
 
-        float2 bilinearOffsets = frac(lowProbeContinuous);
-        float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
-        bilinearWeights = bilinearWeights.zxzx * bilinearWeights.wwyy;
-
-        float4 lowDepthABCD_min;
-        float4 lowDepthABCD_max;
-        float depthThickness = GetMinMaxDepthThickness(
-            lowProbeLocalId, 1, bilinearWeights, 
-            lowDepthABCD_min, lowDepthABCD_max
-        );
-
-        GetMinMaxDepthWeights(
-            hiMinMaxDepth.x, hiMinMaxDepth.y, 
-            depthThickness, lowDepthABCD_min, lowDepthABCD_max, 
-            bilinearWeights,
-            probeWeights_min, probeWeights_max
-        );
+            for (uint sliceId = 0; sliceId < 4; sliceId++)
+            {
+                mergedRadiances[depthLayerId][depthSectorId] += GetRadianceWeighted(lowProbeLocalId, cascadeBaseOffset, bilinearWeights) * 0.25f;
+                cascadeBaseOffset.x += lowCascadeSize.x;
+            }
+        }
     }
+
+    float2 lowMinMaxDepth = SampleMinMaxDepth(lowProbeLocalId, bilinearWeights, 1);
+    float depthThickness = max(0.01f, lowMinMaxDepth.y - lowMinMaxDepth.x);
+    float2 depthLerp = saturate((probeMinMaxDepth - lowMinMaxDepth.x) / depthThickness);
 
     half4 sh0 = 0.0f;
     half4 shX = 0.0f;
     half4 shY = 0.0f;
     half4 shZ = 0.0f;
 
-    int2 upperCascadeCoords = lowProbeLocalId;
-    upperCascadeCoords.y += lowCascadeSize.y * 7;
-
     for (int sliceId = 0; sliceId < 4; sliceId++)
     {
         float2 rayDirectionUV;
         {
             sincos((sliceId + 0.5f) * 0.25f * TWO_PI, rayDirectionUV.y, rayDirectionUV.x);
-            rayDirectionUV *= _ProbesCount.zw * 4;
+            rayDirectionUV *= _ProbesCount.zw * 2;
         }
 
         float4x4 radiances[2];
         radiances[0] = 0.0f;
         radiances[1] = 0.0f;
 
-        // TODO: Fix tracing and merging!!!
         RayTracing_SoftBins(
            probeMinMaxDepth,
            probeCenterUV,
            rayDirectionUV,
            range,
-           cascadeExponent,
+           sharpness,
            radiances[0],
            radiances[1]
         );
 
         for (int depthId = 0; depthId < 4; depthId++)
         {
-            // TODO: Fix boundaries!
-            float4 radianceMin = GetRadianceWeighted(upperCascadeCoords, int2(sliceId, -depthId) * lowCascadeSize, probeWeights_min);
-            float4 radianceMax = GetRadianceWeighted(upperCascadeCoords, int2(sliceId + 4, -depthId) * lowCascadeSize, probeWeights_max);
+            // TODO: Why merged radiance sectors are inverted? (kept consistent with RenderAndMergeCascade)
+            float4 mergedRadianceMin = mergedRadiances[0][3 - depthId];
+            float4 mergedRadianceMax = mergedRadiances[1][3 - depthId];
 
-            // TODO: Fix tracing and merging!!!
-            if (false)
+            float4 radianceAccum = 0.0f;
+
+            UNITY_UNROLL for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
             {
-                radianceMin = half4(
-                    radiances[0][depthId].rgb + radianceMin.rgb * radiances[0][depthId].a, 
-                    radianceMin.a * radiances[0][depthId].a
-                );
-            
-                radianceMax = half4(
-                    radiances[1][depthId].rgb + radianceMax.rgb * radiances[1][depthId].a, 
-                    radianceMax.a * radiances[1][depthId].a
-                );
+                float4 radiance = radiances[depthLayerId][depthId];
+
+                float4 mergedRadiance = lerp(mergedRadianceMin, mergedRadianceMax, depthLerp[depthLayerId]);
+
+                radiance.rgb += mergedRadiance.rgb * radiance.a;
+                radiance.a *= mergedRadiance.a;
+                radianceAccum += radiance;
             }
 
-            // TODO: Blend min and max probes properly!
-            float4 radiance = (radianceMin + radianceMax) * 0.5f;
-
+            float4 radiance = radianceAccum * 0.5f;
             float3 directionWS = normalize(GetRayDirectionWS(int2(sliceId, depthId), 0));
 
             sh0 += radiance * kSHBasis0;
