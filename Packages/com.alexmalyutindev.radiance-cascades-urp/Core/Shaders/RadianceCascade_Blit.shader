@@ -684,7 +684,7 @@ Shader "Hidden/RadianceCascade/Blit"
                 
                 const float sharpness = 10.0f;
                 half4 probeWeights = exp2(-sharpness * depthThickness * abs(depth - lowDepthABCD)) + 0.0001f;
-                probeWeights = NormalizeWights(probeWeights * bilinearWeights);
+                probeWeights = NormalizeWeights(probeWeights * bilinearWeights);
 
                 int2 cascadeSize = floor(_BlitTexture_TexelSize.zw * 0.5f);
                 int3 offsets = int3(cascadeSize, 0);

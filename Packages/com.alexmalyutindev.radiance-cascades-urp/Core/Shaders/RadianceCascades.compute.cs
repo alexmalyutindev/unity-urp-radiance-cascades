@@ -133,6 +133,8 @@ namespace AlexMalyutinDev.RadianceCascades
 
             using var _ = new ProfilingScope(cmd, _combineShSampler);
 
+            cmd.SetComputeFloatParam(_compute, "_CascadeLevel", -1);
+
             var probesCount = new Vector2Int((int)(2 * args.CascadeProbesCount.x), (int)(2 * args.CascadeProbesCount.y));
             cmd.SetComputeVectorParam(_compute, "_ProbesCount", ToSizeTexel(probesCount));
             cmd.SetComputeVectorParam(_compute, "_CascadeSize", args.CascadeProbesCountWithPadding * 2.0f);

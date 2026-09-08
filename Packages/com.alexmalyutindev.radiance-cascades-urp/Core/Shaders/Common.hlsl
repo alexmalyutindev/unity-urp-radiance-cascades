@@ -166,7 +166,7 @@ float3 GetRayDirectionWS(float2 angleId, float cascadeLevel)
     sincos(theta, sinCosTheta.x, sinCosTheta.y);
 
     // float z = -(angleId.y / 4.0f - 0.375f) * 2.0f;
-    float3 ray = normalize(float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.x * sinCosPhi.x, sinCosTheta.y));
+    float3 ray = normalize(float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.x * sinCosPhi.x, -sinCosTheta.y));
     return mul(_ViewToWorld, float4(ray, 0)).xyz;
 }
 
@@ -200,7 +200,7 @@ float4 LinearEyeDepth(float4 depth, float4 zBufferParam)
     return 1.0f / (zBufferParam.z * depth + zBufferParam.w);
 }
 
-float4 NormalizeWights(float4 weights)
+float4 NormalizeWeights(float4 weights)
 {
     return saturate(weights / max(0.0001f, dot(weights, float4(1.0f, 1.0f, 1.0f, 1.0f))));
 }
