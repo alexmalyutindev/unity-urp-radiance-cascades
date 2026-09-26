@@ -59,11 +59,10 @@ Shader "Hidden/BlurredColorBuffer"
                 float4 offset = float4(_InputSizeTexel.zw, -_InputSizeTexel.zw);
 
                 // NOTE: Simple box blur into 1/2 res target
-                half4 color = SampleColorBuffer(input.uv + offset.xy, _InputMipLevel);
-                color += SampleColorBuffer(input.uv + offset.xw, _InputMipLevel);
-                color += SampleColorBuffer(input.uv + offset.zy, _InputMipLevel);
-                color += SampleColorBuffer(input.uv + offset.zw, _InputMipLevel);
-                color *= 0.25f;
+                half4 color = SampleColorBuffer(input.uv + offset.xy, _InputMipLevel) * 0.25f;
+                color += SampleColorBuffer(input.uv + offset.xw, _InputMipLevel) * 0.25f;
+                color += SampleColorBuffer(input.uv + offset.zy, _InputMipLevel) * 0.25f;
+                color += SampleColorBuffer(input.uv + offset.zw, _InputMipLevel) * 0.25f;
 
                 return color;
             }
@@ -81,7 +80,7 @@ Shader "Hidden/BlurredColorBuffer"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
-            Texture2D<float4> _BlitTexture;
+            Texture2D<half4> _BlitTexture;
             float4 _BlitTexture_TexelSize;
             float4 _InputSizeTexel;
             int _InputMipLevel;

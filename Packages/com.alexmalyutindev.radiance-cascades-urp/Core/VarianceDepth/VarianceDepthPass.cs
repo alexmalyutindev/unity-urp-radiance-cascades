@@ -74,7 +74,7 @@ namespace AlexMalyutinDev.RadianceCascades
                 autoGenerateMips = false,
             };
             passData.TargetResolution = new Vector2Int(desc.width, desc.height);
-            passData.TargetMipsCount = (int)Mathf.Log(desc.height, 2);
+            passData.TargetMipsCount = Mathf.Max(1, (int)Mathf.Log(desc.height, 2) - 1);
 
             passData.VarianceDepth = renderGraph.CreateTexture(desc);
             builder.UseTexture(passData.VarianceDepth, AccessFlags.Write);
@@ -94,7 +94,7 @@ namespace AlexMalyutinDev.RadianceCascades
                 BlitUtils.BlitTexture(cmd, data.FrameDepth, data.Material, DepthToMomentsPass);
                 cmd.GenerateMips(data.VarianceDepth);
 
-                for (int mipLevel = 0; mipLevel < data.TargetMipsCount - 1; mipLevel++)
+                for (int mipLevel = 0; mipLevel < data.TargetMipsCount; mipLevel++)
                 {
                     cmd.SetGlobalVector(InputTexelSize, new Vector4(1.0f / width, 1.0f / height, width, height));
 

@@ -74,6 +74,7 @@ float3 GetSceneLighting(float2 uv)
     return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_BlurredColor, uv, _CascadeLevel + 1).rgb;
 }
 
+// #define SELF_OCCLUSION
 #include "Raytracing.hlsl"
 
 ///////////////
@@ -411,11 +412,6 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
     bilinearWeights = bilinearWeights.zxzx * bilinearWeights.wwyy;
 
     const int halfCascadeBufferSize = _CascadeBufferSize / 2;
-
-    for (uint rayId = 0; rayId < 4; rayId++)
-    {
-        
-    }
 
     float2 lowMinMaxDepth = SampleMinMaxDepth(lowProbeLocalId, bilinearWeights, 1);
     float depthThickness = max(1e-7f, lowMinMaxDepth.y - lowMinMaxDepth.x);

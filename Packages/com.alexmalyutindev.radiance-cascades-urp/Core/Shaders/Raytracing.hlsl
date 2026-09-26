@@ -319,25 +319,30 @@ half4 RayTracing_SoftBins(
     sectors[0].transmittance = 1.0h;
     sectors[1] = sectors[0];
     
-    for (uint sectorInit = 0u; sectorInit < 2u; sectorInit++)
+    for (uint sectorId = 0u; sectorId < 2u; sectorId++)
     {
-        sectors[sectorInit].color = float4x4(float4(0,0,0,1), float4(0,0,0,1), float4(0,0,0,1), float4(0,0,0,1));
-        sectors[sectorInit].transmittance = 1.0f;
+        sectors[sectorId].color = float4x4(float4(0,0,0,1), float4(0,0,0,1), float4(0,0,0,1), float4(0,0,0,1));
+        sectors[sectorId].transmittance = 1.0f;
 
         // Soft "self" pre-pass. With the constants used here (center=0, distConst=0,
         // rampSlope=min(1,0)=0) this evaluates to falloff==1 for every bin, i.e. it's
         // a structural no-op — kept because it mirrors the ray-hit splat exactly and
         // may not be a no-op in other compiled variants of this shader.
 #ifdef SELF_OCCLUSION
-        AccumulateSoftBins(
-            sectors[sectorInit],
-            float4(0, 0, 0, -1.0f),
-            /*center*/ 1.0,
-            /*distConst*/ 1.0,
-            /*invCurve*/ 1e-7,
-            /*rampSlope*/ min(1.0, 0.2),
-            /*sharpness*/ args.sharpness
-        );
+        float binNear = 0.2f;
+        float binVarFar = 0.1f;
+        float binThick = 0.0f;
+
+        float curveTerm = SQRT3 * (binNear - binVarFar);
+        float halfRange = (binNear - binThick) * 0.5;
+        float sumRange  = binThick + binNear;
+        float binCenter = sumRange * 0.5;
+        float distConst = abs(halfRange - curveTerm);
+        float invCurve  = max(FLT_EPS, (halfRange + curveTerm) - distConst);
+        float rampSlope = min(1.0, halfRange / max(FLT_EPS, curveTerm));
+
+        float4 directLight = float4(0, 0, 0, -1.0f);
+        AccumulateSoftBins(sectors[sectorId], directLight, binCenter, distConst, invCurve, rampSlope, args.sharpness);
 #endif
     }
 
