@@ -288,7 +288,8 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     radiances[1] = 0.0f;
 
     // TODO: Check what ray length and range should be!
-    float2 range = 0.0001f + float2(pow(2.0f, _CascadeLevel) - 1.0f, pow(2.0f, _CascadeLevel + 1.0f) - 1.0f) * _ScreenSize.z * 20;
+    // float2 range = 0.0001f + float2(pow(2.0f, _CascadeLevel) - 1.0f, pow(2.0f, _CascadeLevel + 1.0f) - 1.0f) * _ScreenSize.z * 10;
+    int2 range = int2(1, 1 + pow(2, _CascadeLevel));
 
     float cascadeExponent = 1 << int(_CascadeLevel);
     float2 probeMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, probeCenterCoord, _CascadeLevel + 1).xy;
@@ -305,7 +306,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
     const int halfCascadeBufferSize = _CascadeBufferSize / 2;
 
-    if (_CascadeLevel < 5)
+    if (_CascadeLevel < 4)
     {
         // TODO: Load all depth sectors.
         // TODO: Sample bilinear upper radiance and blend by depth. 
@@ -377,8 +378,9 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
             for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
             {
+                radiance = radiances[depthLayerId][depthSectorId];
                 int2 targetOffset = int2(depthLayerId * halfCascadeBufferSize.x, _CascadeSize.y * depthSectorId);
-                _RadianceCascades[targetCoords + targetOffset] = float4(radiance, 1.0f);
+                _RadianceCascades[targetCoords + targetOffset] = half4(radiance, 1.0h);
             }
         }
     }
@@ -467,24 +469,26 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
         for (int depthId = 0; depthId < 4; depthId++)
         {
             // TODO: Why merged radiance sectors are inverted? (kept consistent with RenderAndMergeCascade)
-            float4 mergedRadianceMin = mergedRadiances[0][3 - depthId];
-            float4 mergedRadianceMax = mergedRadiances[1][3 - depthId];
+            float4 mergedRadianceMin = mergedRadiances[0][depthId];
+            float4 mergedRadianceMax = mergedRadiances[1][depthId];
 
             float4 radianceAccum = 0.0f;
 
             UNITY_UNROLL for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
             {
                 float4 radiance = radiances[depthLayerId][depthId];
-
                 float4 mergedRadiance = lerp(mergedRadianceMin, mergedRadianceMax, depthLerp[depthLayerId]);
 
-                // radiance.rgb += mergedRadiance.rgb * radiance.a;
-                // radiance.a *= mergedRadiance.a;
-                // radianceAccum += radiance;
-                radianceAccum += mergedRadiance;
+                #if TRACE
+                radiance.rgb += mergedRadiance.rgb * radiance.a;
+                radiance.a *= mergedRadiance.a;
+                radianceAccum += radiance;
+                #else
+                radianceAccum += mergedRadiance * 0.25f;
+                #endif
             }
 
-            float4 radiance = radianceAccum * 0.5f;
+            float4 radiance = radianceAccum;
             float3 directionWS = normalize(GetRayDirectionWS(int2(sliceId, depthId), 0));
 
             sh0 += radiance * kSHBasis0;

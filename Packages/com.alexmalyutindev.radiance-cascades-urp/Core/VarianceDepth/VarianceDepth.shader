@@ -86,6 +86,15 @@ Shader "Hidden/VarianceDepth"
                 + (momentsL0 + momentsR0) * 4.0f / 16.0f
                 + (momentsL1 + momentsR1) * 1.0f / 16.0f;
         }
+        
+        float2 GaussianBlur3x3(float2 uv, float2 offsetDirection)
+        {
+            float2 offset = _InputTexelSize.xy * offsetDirection;
+            float2 momentsL0 = SAMPLE_INPUT_TEX_LOD(uv - offset.xy, _InputMipLevel);
+            float2 momentsC0 = SAMPLE_INPUT_TEX_LOD(uv, _InputMipLevel);
+            float2 momentsR0 = SAMPLE_INPUT_TEX_LOD(uv + offset.xy, _InputMipLevel);
+            return momentsC0 * 0.5f + momentsR0 * 0.25f + momentsL0 * 0.25f;
+        }
         ENDHLSL
 
         Pass
@@ -133,7 +142,7 @@ Shader "Hidden/VarianceDepth"
             HLSLPROGRAM
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                return GaussianBlur3(input.uv, _BlurDirection);
+                return GaussianBlur3x3(input.uv, _BlurDirection);
             }
             ENDHLSL
         }

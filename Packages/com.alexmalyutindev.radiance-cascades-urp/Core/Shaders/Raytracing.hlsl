@@ -346,12 +346,13 @@ half4 RayTracing_SoftBins(
     probeCenterVS[0] = probeViewDirectionVS * args.probeMinMaxDepth.x;
     probeCenterVS[1] = probeViewDirectionVS * args.probeMinMaxDepth.y;
     
-    float2 directionUV = args.rayDirection * _RayScale;
+    float2 directionUV = args.rayDirection * _RayScale * args.probeSize;
 
     args.tracingRange.x = max(0.001f, args.tracingRange.x);
 
     UNITY_LOOP
-    for (float marchDist = args.tracingRange.x; marchDist < args.tracingRange.y; marchDist += args.probeSize)
+    // for (float marchDist = args.tracingRange.x; marchDist < args.tracingRange.y; marchDist += args.probeSize)
+    for (float marchDist = args.tracingRange.x; marchDist < args.tracingRange.y; marchDist += 1.0f)
     {
         float2 rayUV = args.probeCenterUV + marchDist * directionUV;
 
