@@ -328,6 +328,7 @@ half4 RayTracing_SoftBins(
         // rampSlope=min(1,0)=0) this evaluates to falloff==1 for every bin, i.e. it's
         // a structural no-op — kept because it mirrors the ray-hit splat exactly and
         // may not be a no-op in other compiled variants of this shader.
+#ifdef SELF_OCCLUSION
         AccumulateSoftBins(
             sectors[sectorInit],
             float4(0, 0, 0, -1.0f),
@@ -337,6 +338,7 @@ half4 RayTracing_SoftBins(
             /*rampSlope*/ min(1.0, 0.2),
             /*sharpness*/ args.sharpness
         );
+#endif
     }
 
     float3 probeViewDirectionVS = ReconstructPositionVS(args.probeCenterUV, 1.0f);
@@ -346,7 +348,7 @@ half4 RayTracing_SoftBins(
     probeCenterVS[0] = probeViewDirectionVS * args.probeMinMaxDepth.x;
     probeCenterVS[1] = probeViewDirectionVS * args.probeMinMaxDepth.y;
     
-    float2 directionUV = args.rayDirection * _RayScale * args.probeSize;
+    float2 directionUV = args.rayDirection * args.probeSize * _RayScale;
 
     args.tracingRange.x = max(0.001f, args.tracingRange.x);
 

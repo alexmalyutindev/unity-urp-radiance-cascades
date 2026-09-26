@@ -149,7 +149,7 @@ float3 Intersect(float3 planeP, float3 planeN, float3 rayP, float3 rayD)
 
 static float4 DirectionFirstRayZ = float4(-2.0f, -1.0f, 1.0f, 2.0f);
 
-float3 GetRayDirectionWS(float2 angleId, float cascadeLevel)
+float3 GetRayDirectionVS(float2 angleId, float cascadeLevel)
 {
     float deltaPhi = TWO_PI * pow(0.5f, cascadeLevel) * 0.25f; // 1/4
     static const float deltaTheta = PI * 0.25f;
@@ -167,27 +167,12 @@ float3 GetRayDirectionWS(float2 angleId, float cascadeLevel)
 
     // float z = -(angleId.y / 4.0f - 0.375f) * 2.0f;
     float3 ray = normalize(float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.x * sinCosPhi.x, sinCosTheta.y));
-    return mul(_ViewToWorld, float4(ray, 0)).xyz;
+    return ray;
 }
 
-float3 GetRayDirectionDFVS(float2 angleId, float cascadeLevel)
+float3 GetRayDirectionWS(float2 angleId, float cascadeLevel)
 {
-    float deltaPhi = TWO_PI * pow(0.5f, cascadeLevel) * 0.25f; // 1/4
-    static const float deltaTheta = PI * 0.25f;
-    // Azimuth
-    float phi = (angleId.x + 0.5f) * deltaPhi;
-    // float phi = (angleId.x + angleId.y * 0.25f + 0.5f) * deltaPhi;
-    // Polar
-    float theta = (angleId.y + 0.5f) * deltaTheta;
-    // float theta = HALF_PI;
-
-    float2 sinCosPhi;
-    float2 sinCosTheta;
-    sincos(phi, sinCosPhi.x, sinCosPhi.y);
-    sincos(theta, sinCosTheta.x, sinCosTheta.y);
-
-    float3 ray = float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.x * sinCosPhi.x, sinCosTheta.y);
-    return ray;
+    return mul(_ViewToWorld, float4(GetRayDirectionVS(angleId, cascadeLevel), 0.0f));
 }
 
 float2 LinearEyeDepth(float2 depth, float4 zBufferParam)

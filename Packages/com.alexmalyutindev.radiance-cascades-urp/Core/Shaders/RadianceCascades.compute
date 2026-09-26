@@ -335,8 +335,9 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
                 cascadeBaseOffset.x = (cascadeBaseOffset.x - _UpperCascadeSize.x + halfCascadeBufferSize.x) % halfCascadeBufferSize.x; 
                 for (uint sliceId = 0; sliceId < 4; sliceId++)
                 {
-                    mergedRadiances[depthLayerId][depthSectorId] += GetRadianceWeighted(lowProbeLocalId, cascadeBaseOffset, bilinearWeights);
+                    mergedRadiances[depthLayerId][depthSectorId] += GetRadianceWeighted(lowProbeLocalId, cascadeBaseOffset, bilinearWeights) * 0.25f;
                     cascadeBaseOffset.x += _UpperCascadeSize.x;
+                    cascadeBaseOffset.x %= halfCascadeBufferSize.x;
                 }
             }
         }
@@ -351,12 +352,11 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
             float4 mergedRadianceMin = mergedRadiances[0][depthSectorId];
             float4 mergedRadianceMax = mergedRadiances[1][depthSectorId];
 
-            // TODO: Lerp depth layers!
             for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
             {
                 int2 targetOffset = int2(depthLayerId * halfCascadeBufferSize.x, _CascadeSize.y * depthSectorId);
 
-                float4 radiance = radiances[depthLayerId][depthSectorId]; // TODO: Why radiances sectors is inverted?
+                float4 radiance = radiances[depthLayerId][depthSectorId];
                 float4 mergedRadiance = lerp(mergedRadianceMin, mergedRadianceMax, depthLerp[depthLayerId]);
                 radiance.rgb += mergedRadiance.rgb * radiance.a;
                 radiance.a *= mergedRadiance.a;
@@ -412,24 +412,9 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
 
     const int halfCascadeBufferSize = _CascadeBufferSize / 2;
 
-    half4x4 mergedRadiances[2];
-    mergedRadiances[0] = mergedRadiances[1] = 0.0h;
-
-    for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
+    for (uint rayId = 0; rayId < 4; rayId++)
     {
-        for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
-        {
-            int2 cascadeBaseOffset = int2(
-                depthLayerId * halfCascadeBufferSize.x,
-                (4 + depthSectorId) * lowCascadeSize.y
-            );
-
-            for (uint sliceId = 0; sliceId < 4; sliceId++)
-            {
-                mergedRadiances[depthLayerId][depthSectorId] += GetRadianceWeighted(lowProbeLocalId, cascadeBaseOffset, bilinearWeights) * 0.25f;
-                cascadeBaseOffset.x += lowCascadeSize.x;
-            }
-        }
+        
     }
 
     float2 lowMinMaxDepth = SampleMinMaxDepth(lowProbeLocalId, bilinearWeights, 1);
@@ -441,14 +426,30 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
     half4 shY = 0.0f;
     half4 shZ = 0.0f;
 
-    int2 range = int2(1, 1);
-    const float sharpness = 2.0f;
-
-    for (int sliceId = 0; sliceId < 4; sliceId++)
+    for (int rayId = 0; rayId < 4; rayId++)
     {
+        half4x4 mergedRadiances[2];
+        mergedRadiances[0] = mergedRadiances[1] = 0.0h;
+
+        for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
+        {
+            for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
+            {
+                int2 cascadeBaseOffset = int2(
+                    depthLayerId * halfCascadeBufferSize.x + rayId * lowCascadeSize.x,
+                    (4 + depthSectorId) * lowCascadeSize.y
+                );
+
+                mergedRadiances[depthLayerId][depthSectorId] = GetRadianceWeighted(lowProbeLocalId, cascadeBaseOffset, bilinearWeights);
+            }
+        }
+
+        // #define TRACE_BEFORE_SH
+
+#ifdef TRACE_BEFORE_SH
         float2 rayDirectionUV;
         {
-            sincos((sliceId + 0.5f) * 0.25f * TWO_PI, rayDirectionUV.y, rayDirectionUV.x);
+            sincos((rayId + 0.5f) * 0.25f * TWO_PI, rayDirectionUV.y, rayDirectionUV.x);
             rayDirectionUV *= _ProbesCount.zw;
         }
 
@@ -456,6 +457,10 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
         radiances[0] = 0.0f;
         radiances[1] = 0.0f;
 
+        int2 range = int2(1, 1);
+        const float sharpness = 2.0f;
+
+        // TODO: Update args!
         RayTracing_SoftBins(
            probeMinMaxDepth,
            probeCenterUV,
@@ -465,31 +470,33 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
            radiances[0],
            radiances[1]
         );
+#endif
 
-        for (int depthId = 0; depthId < 4; depthId++)
+        UNITY_UNROLL for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
         {
             // TODO: Why merged radiance sectors are inverted? (kept consistent with RenderAndMergeCascade)
-            float4 mergedRadianceMin = mergedRadiances[0][depthId];
-            float4 mergedRadianceMax = mergedRadiances[1][depthId];
+            float4 mergedRadianceMin = mergedRadiances[0][depthSectorId];
+            float4 mergedRadianceMax = mergedRadiances[1][depthSectorId];
 
             float4 radianceAccum = 0.0f;
 
+            // TODO: This lerp has not point!
             UNITY_UNROLL for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
             {
-                float4 radiance = radiances[depthLayerId][depthId];
                 float4 mergedRadiance = lerp(mergedRadianceMin, mergedRadianceMax, depthLerp[depthLayerId]);
 
-                #if TRACE
+#ifdef TRACE_BEFORE_SH
+                float4 radiance = radiances[depthLayerId][depthSectorId];
                 radiance.rgb += mergedRadiance.rgb * radiance.a;
                 radiance.a *= mergedRadiance.a;
                 radianceAccum += radiance;
-                #else
-                radianceAccum += mergedRadiance * 0.25f;
-                #endif
+#else
+                radianceAccum += mergedRadiance * 0.5f;
+#endif
             }
 
             float4 radiance = radianceAccum;
-            float3 directionWS = normalize(GetRayDirectionWS(int2(sliceId, depthId), 0));
+            float3 directionWS = GetRayDirectionWS(int2(rayId, depthSectorId), 0);
 
             sh0 += radiance * kSHBasis0;
             shX += radiance * directionWS.x * kSHBasis1;
@@ -498,8 +505,8 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
         }
     }
 
-    _RadianceSH[coords + int2(0, _CascadeSize.y)] = sh0;
-    _RadianceSH[coords + int2(_CascadeSize.xy)]   = shX;
-    _RadianceSH[coords]                           = shY;
-    _RadianceSH[coords + int2(_CascadeSize.x, 0)] = shZ;
+    _RadianceSH[coords]                           = sh0;
+    _RadianceSH[coords + int2(_CascadeSize.x, 0)] = shX;
+    _RadianceSH[coords + int2(0, _CascadeSize.y)] = shY;
+    _RadianceSH[coords + int2(_CascadeSize.xy)]   = shZ;
 }

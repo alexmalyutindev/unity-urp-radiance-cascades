@@ -688,10 +688,10 @@ Shader "Hidden/RadianceCascade/Blit"
 
                 int2 cascadeSize = floor(_BlitTexture_TexelSize.zw * 0.5f);
                 int3 offsets = int3(cascadeSize, 0);
-                half4 sh0 = LoadSH(lowProbeBaseId, offsets.zy, cascadeSize.xy, probeWeights);
-                half4 shX = LoadSH(lowProbeBaseId, offsets.xy, cascadeSize.xy, probeWeights);
-                half4 shY = LoadSH(lowProbeBaseId, int2(0, 0), cascadeSize.xy, probeWeights);
-                half4 shZ = LoadSH(lowProbeBaseId, offsets.xz, cascadeSize.xy, probeWeights);
+                half4 sh0 = LoadSH(lowProbeBaseId, int2(0, 0), cascadeSize.xy, probeWeights);
+                half4 shX = LoadSH(lowProbeBaseId, offsets.xz, cascadeSize.xy, probeWeights);
+                half4 shY = LoadSH(lowProbeBaseId, offsets.zy, cascadeSize.xy, probeWeights);
+                half4 shZ = LoadSH(lowProbeBaseId, offsets.xy, cascadeSize.xy, probeWeights);
 
                 float3 L0L1 = SHEvalLinearL0L1(
                     normalWS,
@@ -757,8 +757,9 @@ Shader "Hidden/RadianceCascade/Blit"
             float4 Fragment(Varyings input) : SV_TARGET
             {
                 int2 coords = floor(input.positionCS.xy);
-                // coords.y += round(_BlitTexture_TexelSize.w * 1.0f) - round(_ScreenSize.y);
-                return LOAD_TEXTURE2D(_BlitTexture, coords);
+                // coords.x += round(_BlitTexture_TexelSize.x * 1.0f);
+                coords.y += round(_BlitTexture_TexelSize.w * 1.0f) - round(_ScreenSize.y);
+                return (LOAD_TEXTURE2D(_BlitTexture, coords));
             }
             ENDHLSL
         }
