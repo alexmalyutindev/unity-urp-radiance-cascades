@@ -63,15 +63,15 @@ RWTexture2D<half4> _RadianceSH;
 float2 GetDepthMoments(float2 uv)
 {
     // _CascadeLevel = 0 is x1/4 of target resolution,
-    // _VarianceDepth is x1/2 of target resolution, then offseting mip level by 1.
-    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_VarianceDepth, uv, _CascadeLevel + 1).xy;
+    // _VarianceDepth is x1/2 of target resolution, then offsetting mip level by 1.
+    return SAMPLE_TEXTURE2D_LOD(_VarianceDepth, sampler_LinearClamp, uv, _CascadeLevel + 2).xy;
 }
 
 float3 GetSceneLighting(float2 uv)
 {
     // _CascadeLevel = 0 is x1/4 of target resolution,
-    // _BlurredColor is x1/2 of target resolution, then offseting mip level by 1.
-    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_BlurredColor, uv, _CascadeLevel + 1).rgb;
+    // _BlurredColor is x1/2 of target resolution, then offsetting mip level by 1.
+    return SAMPLE_TEXTURE2D_LOD(_BlurredColor, sampler_LinearClamp, uv, _CascadeLevel + 2).rgb;
 }
 
 // #define SELF_OCCLUSION

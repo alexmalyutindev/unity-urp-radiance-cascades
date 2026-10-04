@@ -102,10 +102,21 @@ Shader "Hidden/VarianceDepth"
             Name "0 DepthToMoments"
 
             HLSLPROGRAM
+            float3 ReconstructPositionVS(float2 uv, float eyeDepth)
+            {
+                float2 ndc = mad(uv, 2.0f, -1.0f);
+                return float3(
+                    ndc.x / _ProjMatrix[0][0],
+                    ndc.y / _ProjMatrix[1][1],
+                    1.0f
+                ) * eyeDepth;
+            }
+
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                float depthRaw = SAMPLE_TEXTURE2D(_BlitTexture, sampler_PointClamp, input.uv).r;
+                float depthRaw = SAMPLE_TEXTURE2D(_BlitTexture, sampler_LinearClamp, input.uv).r;
                 float depth = LinearEyeDepth(depthRaw, _ZBufferParams);
+                // depth = length(ReconstructPositionVS(input.uv, depth));
                 return float2(depth, depth * depth);
             }
             ENDHLSL
@@ -140,8 +151,11 @@ Shader "Hidden/VarianceDepth"
             Name "3 DepthMomentsBlurD"
 
             HLSLPROGRAM
+            #include "Packages/com.alexmalyutindev.radiance-cascades-urp/ShaderLibrary/Blur.hlsl"
+
             float2 Fragment(Varyings input) : SV_TARGET
             {
+                return SampleTent(_BlitTexture, sampler_BlitTexture, _InputTexelSize, _InputMipLevel, input.positionCS, _BlurDirection);
                 return GaussianBlur3x3(input.uv, _BlurDirection);
             }
             ENDHLSL

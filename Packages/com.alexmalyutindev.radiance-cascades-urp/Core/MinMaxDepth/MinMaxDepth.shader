@@ -22,11 +22,25 @@ Shader "Hidden/MinMaxDepth"
             #define SINGLE_CHANNEL
             #include "Common.hlsl"
 
+            float3 ReconstructPositionVS(float2 uv, float eyeDepth)
+            {
+                float2 ndc = mad(uv, 2.0f, -1.0f);
+                return float3(
+                    ndc.x / _ProjMatrix[0][0],
+                    ndc.y / _ProjMatrix[1][1],
+                    1.0f
+                ) * eyeDepth;
+            }
+
             float2 Fragment(Varyings input) : SV_TARGET
             {
                 float2 uv = input.positionCS.xy * _BlitTexture_TexelSize.xy * 2.0f;
                 float4 depths = _BlitTexture.GatherRed(sampler_PointClamp, uv);
                 depths = LinearEyeDepth(depths, _ZBufferParams);
+                // depths.x = length(ReconstructPositionVS(input.uv, depths.x));
+                // depths.y = length(ReconstructPositionVS(input.uv, depths.y));
+                // depths.z = length(ReconstructPositionVS(input.uv, depths.z));
+                // depths.w = length(ReconstructPositionVS(input.uv, depths.w));
                 return float2(Min4(depths), Max4(depths));
             }
             ENDHLSL

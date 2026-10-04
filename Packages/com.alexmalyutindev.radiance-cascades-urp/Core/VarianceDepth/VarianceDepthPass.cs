@@ -64,7 +64,7 @@ namespace AlexMalyutinDev.RadianceCascades
             passData.FrameDepth = resourceData.activeDepthTexture;
             builder.UseTexture(passData.FrameDepth);
 
-            var desc = new TextureDesc(frameDesc.width, frameDesc.height)
+            var desc = new TextureDesc(frameDesc.width / 2, frameDesc.height / 2)
             {
                 name = "VarianceDepth",
                 colorFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGBFloat, false),
@@ -98,13 +98,13 @@ namespace AlexMalyutinDev.RadianceCascades
                 {
                     cmd.SetGlobalVector(InputTexelSize, new Vector4(1.0f / width, 1.0f / height, width, height));
 
-                    cmd.SetGlobalVector(BlurDirection, new Vector4(1.0f, 0.0f));
+                    cmd.SetGlobalVector(BlurDirection, new Vector4(2.0f, 0.0f));
 
                     cmd.SetRenderTarget(data.IntermediateDownsampleBuffer, mipLevel);
                     cmd.SetGlobalInteger(InputMipLevel, mipLevel);
                     BlitUtils.BlitTexture(cmd, data.VarianceDepth, data.Material, BlurDirectionalPass);
 
-                    cmd.SetGlobalVector(BlurDirection, new Vector4(0.0f, 1.0f));
+                    cmd.SetGlobalVector(BlurDirection, new Vector4(0.0f, 2.0f));
 
                     cmd.SetRenderTarget(data.VarianceDepth, mipLevel);
                     cmd.SetGlobalInteger(InputMipLevel, mipLevel);

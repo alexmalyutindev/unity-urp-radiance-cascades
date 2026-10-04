@@ -130,6 +130,7 @@ Shader "Hidden/BlurredColorBuffer"
             #pragma fragment Fragment
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.alexmalyutindev.radiance-cascades-urp/ShaderLibrary/Blur.hlsl"
 
             SAMPLER(sampler_BlitTexture);
             Texture2D<half4> _BlitTexture;
@@ -160,59 +161,17 @@ Shader "Hidden/BlurredColorBuffer"
                 #endif
                 return output;
             }
-            
-            #define SAMPLE_INPUT_TEX_LOD(uv, mipLevel) SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_BlitTexture, uv, mipLevel)
-
-            inline half3 SampleColorBuffer(float2 uv, int lod)
-            {
-                return SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_BlitTexture, uv, lod);
-            }
-            
-            // 3-Tap Symmetric Weights (Sum up to 1.0)
-            static const float CenterWeight = 0.520500f;
-            static const float OuterWeight  = 0.239750f;
-
-            float3 GaussianBlur3(float2 uv, float2 offsetDirection)
-            {
-                float2 offset = _InputTexelSize.xy * offsetDirection;
-                float3 momentsL0 = SAMPLE_INPUT_TEX_LOD(uv - offset, _InputMipLevel);
-                float3 momentsC0 = SAMPLE_INPUT_TEX_LOD(uv, _InputMipLevel);
-                float3 momentsR0 = SAMPLE_INPUT_TEX_LOD(uv + offset, _InputMipLevel);
-
-                return momentsC0 * CenterWeight
-                    + (momentsL0 + momentsR0) * OuterWeight;
-            }
-
-            half3 GausianBlur3x3(float2 uv, float2 offset)
-            {
-                half3 color = SampleColorBuffer(uv, _InputMipLevel) * 0.5h;
-                color += SampleColorBuffer(uv + offset.xy, _InputMipLevel) * 0.25h;
-                color += SampleColorBuffer(uv - offset.xy, _InputMipLevel) * 0.25h;
-                return color;
-            }
-            
-            half3 BoxBlur3x3(float2 uv, float2 offset)
-            {
-                half3 color = SampleColorBuffer(uv, _InputMipLevel);
-                color += SampleColorBuffer(uv + offset.xy, _InputMipLevel);
-                color += SampleColorBuffer(uv - offset.xy, _InputMipLevel);
-                return color * half(0.333334h);
-            }
-
-            half3 GausianBlur5x5(float2 uv, float2 offset)
-            {
-                half3 color = SampleColorBuffer(uv, _InputMipLevel) * 6.0h;
-                color += SampleColorBuffer(uv + offset.xy, _InputMipLevel) * 4.0h;
-                color += SampleColorBuffer(uv - offset.xy, _InputMipLevel) * 4.0h;
-                color += SampleColorBuffer(uv + offset.xy * 2.0f, _InputMipLevel);
-                color += SampleColorBuffer(uv - offset.xy * 2.0f, _InputMipLevel);
-                return color * half(1.0h / 16.0h);
-            }
 
             half3 Fragment(Varyings input) : SV_TARGET
             {
-                float2 offset = _OffsetDirection * _InputTexelSize.xy;
-                return GausianBlur3x3(input.uv, offset);
+                return SampleTent(
+                    _BlitTexture,
+                    sampler_BlitTexture,
+                    _InputTexelSize, 
+                    _InputMipLevel,
+                    input.positionCS, 
+                    _OffsetDirection
+                );
             }
             ENDHLSL
         }
