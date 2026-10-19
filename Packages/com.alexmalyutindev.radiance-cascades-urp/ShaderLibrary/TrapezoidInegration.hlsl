@@ -5,10 +5,10 @@
 
 struct Trapezoid
 {
-    half median;
-    half constHalfSize;
-    half linHalfSize;
-    half height;
+    float median;
+    float constHalfSize;
+    float linHalfSize;
+    float height;
 };
 
 // Builds a trapezoid-shaped opacity function from an interval [minmax.x, minmax.y] offset by a uniformly
@@ -16,8 +16,8 @@ struct Trapezoid
 Trapezoid GetVarianceTrapezoid(half2 minMax, half sigma0)
 {
     Trapezoid result;
-    half halfRange = SQRT3 * sigma0;
-    half halfSize = (minMax.y - minMax.x) * 0.5f;
+    float halfRange = SQRT3 * sigma0;
+    float halfSize = (minMax.y - minMax.x) * 0.5f;
     result.median = 0.5f * (minMax.x + minMax.y);
     result.constHalfSize = abs(halfSize - halfRange);
     result.linHalfSize = max(HLF_EPS, halfSize + halfRange - result.constHalfSize);
@@ -93,10 +93,10 @@ void IntegrateDepthSector(
     inout IntegrationSector sector
 )
 {
-    half meanAngle = dot(probeNormalVS, normalize(occluderMeanVS - probeCenterVS)) * 0.5f + 0.5f;
-    half upperAngle = dot(probeNormalVS, normalize(occluderUpperVS - probeCenterVS)) * 0.5f + 0.5f;
-    half thickAngle = dot(probeNormalVS, normalize(occluderThickVS - probeCenterVS)) * 0.5f + 0.5f;
-    half sigma = max(HLF_EPS, meanAngle - upperAngle);
+    float meanAngle = dot(probeNormalVS, normalize(occluderMeanVS - probeCenterVS)) * 0.5f + 0.5f;
+    float upperAngle = dot(probeNormalVS, normalize(occluderUpperVS - probeCenterVS)) * 0.5f + 0.5f;
+    float thickAngle = dot(probeNormalVS, normalize(occluderThickVS - probeCenterVS)) * 0.5f + 0.5f;
+    float sigma = max(HLF_EPS, meanAngle - upperAngle);
 
     Trapezoid trapezoid = GetVarianceTrapezoid(half2(upperAngle, thickAngle), sigma);
 

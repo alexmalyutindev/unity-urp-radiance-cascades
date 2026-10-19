@@ -39,6 +39,7 @@ void RayTracing_TrapezoidIntegration(
     probeCenterVS[1] = probeViewDirectionVS * args.probeMinMaxDepth.y;
     
     float2 rayDirectionUV = args.rayDirection * args.probeSize;
+    args.tracingRange.x = max(0.5, args.tracingRange.x);
 
     UNITY_LOOP
     for (float rayStep = args.tracingRange.x; rayStep < args.tracingRange.y; rayStep += 1.0f)
