@@ -106,13 +106,13 @@ namespace AlexMalyutinDev.RadianceCascades
 
                     cmd.SetRenderTarget(data.TempBuffer, mipLevel);
                     cmd.SetGlobalInteger(InputMipLevelId, mipLevel);
-                    cmd.SetGlobalVector(OffsetDirectionId, new Vector4(2, 0));
+                    cmd.SetGlobalVector(OffsetDirectionId, new Vector4(2.0f, 0.0f));
                     BlitUtils.BlitTexture(cmd, data.BlurredColorBuffer, data.Material, 2);
 
                     // NOTE: Blur current color buffer in to current mip chain
                     cmd.SetRenderTarget(data.BlurredColorBuffer, mipLevel);
                     cmd.SetGlobalInteger(InputMipLevelId, mipLevel);
-                    cmd.SetGlobalVector(OffsetDirectionId, new Vector4(0, 2));
+                    cmd.SetGlobalVector(OffsetDirectionId, new Vector4(0.0f, 2.0f));
                     BlitUtils.BlitTexture(cmd, data.TempBuffer, data.Material, 2);
 
                     width >>= 1;

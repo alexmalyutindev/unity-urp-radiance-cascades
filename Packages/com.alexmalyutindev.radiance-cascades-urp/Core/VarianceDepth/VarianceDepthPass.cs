@@ -23,9 +23,8 @@ namespace AlexMalyutinDev.RadianceCascades
         private static readonly int BlurDirection = Shader.PropertyToID("_BlurDirection");
 
         private const int DepthToMomentsPass = 0;
-        private const int BlurHorizontalPass = 1;
-        private const int BlurVerticalPass = 2;
-        private const int BlurDirectionalPass = 3;
+        private const int BlurDirectionalPass = 1;
+
         private readonly Material _material;
         private readonly RadianceCascadesRenderingData _radianceCascadesRenderingData;
 

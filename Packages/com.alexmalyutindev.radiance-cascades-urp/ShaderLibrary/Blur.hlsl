@@ -34,6 +34,7 @@ ElementType SampleTent( \
 }
 
 SAMPLE_TENT_FUNC(Texture2D<float4>, float4)
+SAMPLE_TENT_FUNC(Texture2D<half3>, half3)
 SAMPLE_TENT_FUNC(Texture2D<half4>, half4)
 SAMPLE_TENT_FUNC(Texture2D<float2>, float2)
 SAMPLE_TENT_FUNC(Texture2D<half2>, half2)

@@ -12,7 +12,7 @@ Shader "Hidden/MinMaxDepth"
 
         Pass
         {
-            Name "DownSampleDepthMinMax2x2_SingleChannel"
+            Name "0 DownSampleDepthMinMax2x2_SingleChannel"
             ColorMask RG
 
             HLSLPROGRAM
@@ -48,7 +48,7 @@ Shader "Hidden/MinMaxDepth"
 
         Pass
         {
-            Name "DownSampleDepthMinMax2x2"
+            Name "1 DownSampleDepthMinMax2x2"
             ColorMask RG
 
             HLSLPROGRAM
@@ -66,7 +66,7 @@ Shader "Hidden/MinMaxDepth"
 
         Pass
         {
-            Name "CopyLevel"
+            Name "2 CopyLevel"
 
             HLSLPROGRAM
             #pragma vertex Vertex
@@ -84,7 +84,7 @@ Shader "Hidden/MinMaxDepth"
 
         Pass
         {
-            Name "DepthToMixMaxDepth"
+            Name "3 DepthToMixMaxDepth"
             ColorMask RG
 
             HLSLPROGRAM
@@ -101,18 +101,14 @@ Shader "Hidden/MinMaxDepth"
 
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                return LinearEyeDepth(
-                    SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, input.uv, 0).r,
-                    _ZBufferParams
-                );
-
-                int2 range = 1; // floor(_BlitTexture_TexelSize.zw / _TargetResolution.xy);
+                int2 range = floor(_BlitTexture_TexelSize.zw / _TargetResolution.xy) * 0.5f;
                 float2 minMaxDepth = float2(FLT_MAX, 0.0f);
-                for (int x = -range; x <= range.x; x++)
+                for (int x = -range.x; x <= range.x; x++)
                 {
-                    for (int y = -range; y <= range.y; y++)
+                    for (int y = -range.y; y <= range.y; y++)
                     {
-                        float2 uv = input.uv + float2(x, y) * _BlitTexture_TexelSize.xy * 2;
+                        float2 uv = input.positionCS.xy / _TargetResolution.xy;
+                        uv += float2(x, y) * _BlitTexture_TexelSize.xy * 2;
                         float depth = SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv, 0).r;
                         depth = LinearEyeDepth(depth, _ZBufferParams);
                         minMaxDepth = float2(

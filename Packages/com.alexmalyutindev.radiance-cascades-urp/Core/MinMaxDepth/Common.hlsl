@@ -45,7 +45,7 @@ float4 LinearEyeDepth(float4 depth, float4 zBufferParam)
 }
 
 #if defined(SINGLE_CHANNEL)
-float2 LoadDepth(int2 coord, int mipLevel)
+float LoadDepth(int2 coord, int mipLevel)
 {
     coord = min(coord, int2(_InputResolution) - 1);
     return LOAD_TEXTURE2D_LOD(_BlitTexture, coord, mipLevel).r;
@@ -73,10 +73,10 @@ float2 LoadDepthMinMax(int2 coord, int mipLevel)
 
 float4 GatherDepth(int2 coord, int mipLevel)
 {
-    float a = LoadDepth(coord, mipLevel);
-    float b = LoadDepth(coord + int2(1, 0), mipLevel);
-    float c = LoadDepth(coord + int2(0, 1), mipLevel);
-    float d = LoadDepth(coord + int2(1, 1), mipLevel);
+    float a = LoadDepth(coord, mipLevel).r;
+    float b = LoadDepth(coord + int2(1, 0), mipLevel).r;
+    float c = LoadDepth(coord + int2(0, 1), mipLevel).r;
+    float d = LoadDepth(coord + int2(1, 1), mipLevel).r;
 
     return float4(a, b, c, d);
 }

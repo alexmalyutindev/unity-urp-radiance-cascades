@@ -124,31 +124,7 @@ Shader "Hidden/VarianceDepth"
 
         Pass
         {
-            Name "1 DepthMomentsBlurH"
-
-            HLSLPROGRAM
-            float2 Fragment(Varyings input) : SV_TARGET
-            {
-                return GaussianBlur5(input.uv, float2(1, 0));
-            }
-            ENDHLSL
-        }
-
-        Pass
-        {
-            Name "2 DepthMomentsBlurV"
-
-            HLSLPROGRAM
-            float2 Fragment(Varyings input) : SV_TARGET
-            {
-                return GaussianBlur5(input.uv, float2(0, 1));
-            }
-            ENDHLSL
-        }
-
-        Pass
-        {
-            Name "3 DepthMomentsBlurD"
+            Name "1 DepthMomentsBlurD"
 
             HLSLPROGRAM
             #include "Packages/com.alexmalyutindev.radiance-cascades-urp/ShaderLibrary/Blur.hlsl"
@@ -156,7 +132,6 @@ Shader "Hidden/VarianceDepth"
             float2 Fragment(Varyings input) : SV_TARGET
             {
                 return SampleTent(_BlitTexture, sampler_BlitTexture, _InputTexelSize, _InputMipLevel, input.positionCS, _BlurDirection);
-                return GaussianBlur3x3(input.uv, _BlurDirection);
             }
             ENDHLSL
         }

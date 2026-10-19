@@ -1,4 +1,4 @@
-#include "Common.hlsl"
+#include "Packages/com.alexmalyutindev.radiance-cascades-urp/ShaderLibrary/TracingCommon.hlsl"
 
 // -------------------------------------------------------------------------------------
 // Soft directional-bin splatting.

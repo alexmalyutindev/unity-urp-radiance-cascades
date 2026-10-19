@@ -162,7 +162,7 @@ Shader "Hidden/BlurredColorBuffer"
                 return output;
             }
 
-            half3 Fragment(Varyings input) : SV_TARGET
+            half4 Fragment(Varyings input) : SV_TARGET
             {
                 return SampleTent(
                     _BlitTexture,

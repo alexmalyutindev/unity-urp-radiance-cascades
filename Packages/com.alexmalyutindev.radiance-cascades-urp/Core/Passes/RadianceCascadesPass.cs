@@ -218,19 +218,19 @@ namespace AlexMalyutinDev.RadianceCascades
                 // TEST: Preview cascades blit.
                 if (false)
                 {
-                    BlitUtils.BlitTexture(context.cmd, data.RadianceCascades, data.Material, 5);
-                    // BlitUtils.BlitTexture(context.cmd, data.RadianceSH, data.Material, 5);
+                    BlitUtils.BlitTexture(context.cmd, data.RadianceCascades, data.Material, 1);
+                    // BlitUtils.BlitTexture(context.cmd, data.RadianceSH, data.Material, 1);
                 }
                 else
                 {
-                    context.cmd.SetGlobalVector("_UpperProbesCount", data.UpperCascadeSize);
+                    context.cmd.SetGlobalVector("_NextProbesCount", data.UpperCascadeSize);
                     context.cmd.SetGlobalMatrix("_ViewToWorld", data.CameraData.GetViewMatrix().inverse);
                     context.cmd.SetGlobalTexture("_MinMaxDepth", data.MinMaxDepth);
 
                     context.cmd.SetGlobalTexture("_GBuffer0", data.FrameColor);
                     context.cmd.SetGlobalTexture("_GBuffer2", data.FrameNormals);
                     context.cmd.SetGlobalTexture("_CameraDepthTexture", data.FrameDepth);
-                    BlitUtils.BlitTexture(context.cmd, data.RadianceSH, data.Material, 4);
+                    BlitUtils.BlitTexture(context.cmd, data.RadianceSH, data.Material, 0);
                 }
             });
         }

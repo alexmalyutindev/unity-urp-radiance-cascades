@@ -96,8 +96,8 @@ namespace AlexMalyutinDev.RadianceCascades
                 cmd.SetComputeVectorParam(_compute, "_CascadeSize", cascadeSize);
                 cmd.SetComputeVectorParam(_compute, "_ProbesCount", probesCount);
 
-                cmd.SetComputeVectorParam(_compute, "_UpperCascadeSize", upperCascadeSize);
-                cmd.SetComputeVectorParam(_compute, "_UpperProbesCount", upperProbesCount);
+                cmd.SetComputeVectorParam(_compute, "_NextCascadeSize", upperCascadeSize);
+                cmd.SetComputeVectorParam(_compute, "_NextProbesCount", upperProbesCount);
 
                 var threadGroupsY = Mathf.CeilToInt(args.Cascade0Size.y / ((1 << cascadeLevel) * groupSizeY));
                 cmd.DispatchCompute(_compute, kernel, threadGroupsX, threadGroupsY, 1);
@@ -139,8 +139,8 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.SetComputeVectorParam(_compute, "_ProbesCount", ToSizeTexel(probesCount));
             cmd.SetComputeVectorParam(_compute, "_CascadeSize", args.CascadeProbesCountWithPadding * 2.0f);
 
-            cmd.SetComputeVectorParam(_compute, "_UpperProbesCount", args.CascadeProbesCount);
-            cmd.SetComputeVectorParam(_compute, "_UpperCascadeSize", args.CascadeProbesCountWithPadding);
+            cmd.SetComputeVectorParam(_compute, "_NextProbesCount", args.CascadeProbesCount);
+            cmd.SetComputeVectorParam(_compute, "_NextCascadeSize", args.CascadeProbesCountWithPadding);
 
             cmd.SetComputeMatrixParam(_compute, "_ViewToWorld", args.CameraData.GetViewMatrix().inverse);
 
