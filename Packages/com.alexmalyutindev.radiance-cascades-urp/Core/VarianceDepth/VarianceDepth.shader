@@ -10,46 +10,113 @@ Shader "Hidden/VarianceDepth"
         }
         LOD 100
 
+        HLSLINCLUDE
+        #pragma vertex Vertex
+        #pragma fragment Fragment
+
+        #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+        SAMPLER(sampler_BlitTexture);
+        Texture2D<float2> _BlitTexture;
+        float4 _InputTexelSize;
+        float2 _BlurDirection;
+        int _InputMipLevel;
+
+        struct Attributes
+        {
+            float4 positionOS : POSITION;
+            float2 texcoord : TEXCOORD0;
+        };
+
+        struct Varyings
+        {
+            float2 uv : TEXCOORD0;
+            float4 positionCS : SV_POSITION;
+        };
+
+        Varyings Vertex(Attributes input)
+        {
+            Varyings output;
+            output.positionCS = float4(input.positionOS.xy * 2 - 1, 0, 1);
+            output.uv = input.texcoord;
+            #if UNITY_UV_STARTS_AT_TOP
+            output.uv.y = 1 - output.uv.y;
+            #endif
+            return output;
+        }
+
+        #define SAMPLE_INPUT_TEX(uv) SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_BlitTexture, uv, 0)
+        #define SAMPLE_INPUT_TEX_LOD(uv, mipLevel) SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_BlitTexture, uv, mipLevel)
+
+        float2 BoxBlur3(float2 uv, float2 offsetDirection)
+        {
+            float2 offset = _InputTexelSize.xy * offsetDirection;
+            float2 momentsL0 = SAMPLE_INPUT_TEX_LOD(uv - offset, _InputMipLevel);
+            float2 momentsC0 = SAMPLE_INPUT_TEX_LOD(uv, _InputMipLevel);
+            float2 momentsR0 = SAMPLE_INPUT_TEX_LOD(uv + offset, _InputMipLevel);
+
+            return (momentsC0 + momentsL0 + momentsR0) * (1.0f / 3.0f);
+        }
+        
+        // 3-Tap Symmetric Weights (Sum up to 1.0)
+        static const float CenterWeight = 0.520500f;
+        static const float OuterWeight  = 0.239750f;
+
+        float2 GaussianBlur3(float2 uv, float2 offsetDirection)
+        {
+            float2 offset = _InputTexelSize.xy * offsetDirection;
+            float2 momentsL0 = SAMPLE_INPUT_TEX_LOD(uv - offset, _InputMipLevel);
+            float2 momentsC0 = SAMPLE_INPUT_TEX_LOD(uv, _InputMipLevel);
+            float2 momentsR0 = SAMPLE_INPUT_TEX_LOD(uv + offset, _InputMipLevel);
+
+            return momentsC0 * CenterWeight
+                + (momentsL0 + momentsR0) * OuterWeight;
+        }
+
+        float2 GaussianBlur5(float2 uv, float2 offsetDirection)
+        {
+            float2 offset = _InputTexelSize.xy * offsetDirection;
+            float2 momentsL1 = SAMPLE_INPUT_TEX_LOD(uv - 2.0h * offset, _InputMipLevel);
+            float2 momentsL0 = SAMPLE_INPUT_TEX_LOD(uv - offset, _InputMipLevel);
+            float2 momentsC0 = SAMPLE_INPUT_TEX_LOD(uv, _InputMipLevel);
+            float2 momentsR0 = SAMPLE_INPUT_TEX_LOD(uv + offset, _InputMipLevel);
+            float2 momentsR1 = SAMPLE_INPUT_TEX_LOD(uv + 2.0h * offset, _InputMipLevel);
+
+            return momentsC0 * 6.0f / 16.0f
+                + (momentsL0 + momentsR0) * 4.0f / 16.0f
+                + (momentsL1 + momentsR1) * 1.0f / 16.0f;
+        }
+        
+        float2 GaussianBlur3x3(float2 uv, float2 offsetDirection)
+        {
+            float2 offset = _InputTexelSize.xy * offsetDirection;
+            float2 momentsL0 = SAMPLE_INPUT_TEX_LOD(uv - offset.xy, _InputMipLevel);
+            float2 momentsC0 = SAMPLE_INPUT_TEX_LOD(uv, _InputMipLevel);
+            float2 momentsR0 = SAMPLE_INPUT_TEX_LOD(uv + offset.xy, _InputMipLevel);
+            return momentsC0 * 0.5f + momentsR0 * 0.25f + momentsL0 * 0.25f;
+        }
+        ENDHLSL
+
         Pass
         {
-            Name "DepthToMomentsBlurH"
+            Name "0 DepthToMoments"
 
             HLSLPROGRAM
-            #pragma vertex Vertex
-            #pragma fragment Fragment
-
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-
-            Texture2D<float> _BlitTexture;
-            float4 _BlitTexture_TexelSize;
-
-            struct Attributes
+            float3 ReconstructPositionVS(float2 uv, float eyeDepth)
             {
-                float4 positionOS : POSITION;
-                float2 texcoord : TEXCOORD0;
-            };
-
-            struct Varyings
-            {
-                float2 uv : TEXCOORD0;
-                float4 positionCS : SV_POSITION;
-            };
-
-            Varyings Vertex(Attributes input)
-            {
-                Varyings output;
-                output.positionCS = float4(input.positionOS.xy * 2 - 1, 0, 1);
-                output.uv = input.texcoord;
-                #if UNITY_UV_STARTS_AT_TOP
-                output.uv.y = 1 - output.uv.y;
-                #endif
-                return output;
+                float2 ndc = mad(uv, 2.0f, -1.0f);
+                return float3(
+                    ndc.x / _ProjMatrix[0][0],
+                    ndc.y / _ProjMatrix[1][1],
+                    1.0f
+                ) * eyeDepth;
             }
 
             float2 Fragment(Varyings input) : SV_TARGET
             {
                 float depthRaw = SAMPLE_TEXTURE2D(_BlitTexture, sampler_LinearClamp, input.uv).r;
                 float depth = LinearEyeDepth(depthRaw, _ZBufferParams);
+                // depth = length(ReconstructPositionVS(input.uv, depth));
                 return float2(depth, depth * depth);
             }
             ENDHLSL
@@ -57,106 +124,14 @@ Shader "Hidden/VarianceDepth"
 
         Pass
         {
-            Name "DepthMomentsBlurV"
+            Name "1 DepthMomentsBlurD"
 
             HLSLPROGRAM
-            #pragma vertex Vertex
-            #pragma fragment Fragment
-
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-
-            Texture2D<float2> _BlitTexture;
-            float4 _BlitTexture_TexelSize;
-            float2 _InputResolution;
-            int _InputMipLevel;
-
-            struct Attributes
-            {
-                float4 positionOS : POSITION;
-                float2 texcoord : TEXCOORD0;
-            };
-
-            struct Varyings
-            {
-                float2 uv : TEXCOORD0;
-                float4 positionCS : SV_POSITION;
-            };
-
-            Varyings Vertex(Attributes input)
-            {
-                Varyings output;
-                output.positionCS = float4(input.positionOS.xy * 2 - 1, 0, 1);
-                output.uv = input.texcoord;
-                #if UNITY_UV_STARTS_AT_TOP
-                output.uv.y = 1 - output.uv.y;
-                #endif
-                return output;
-            }
+            #include "Packages/com.alexmalyutindev.radiance-cascades-urp/ShaderLibrary/Blur.hlsl"
 
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                float2 offset = float2(0.0f, _BlitTexture_TexelSize.y);
-                float2 depth2 = 0.0f;
-                int range = 3;
-                for (int y = -range; y <= range; y++)
-                {
-                    float2 depthMoments = SAMPLE_TEXTURE2D(_BlitTexture, sampler_LinearClamp, input.uv + offset * y).rg;
-                    depth2 += depthMoments;
-                }
-                return depth2 / (range * 2.0f + 1.0f);
-            }
-            ENDHLSL
-        }
-
-        Pass
-        {
-            Name "DepthMomentsBlurH"
-
-            HLSLPROGRAM
-            #pragma vertex Vertex
-            #pragma fragment Fragment
-
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-
-            Texture2D<float2> _BlitTexture;
-            float4 _BlitTexture_TexelSize;
-            float2 _InputResolution;
-            int _InputMipLevel;
-
-            struct Attributes
-            {
-                float4 positionOS : POSITION;
-                float2 texcoord : TEXCOORD0;
-            };
-
-            struct Varyings
-            {
-                float2 uv : TEXCOORD0;
-                float4 positionCS : SV_POSITION;
-            };
-
-            Varyings Vertex(Attributes input)
-            {
-                Varyings output;
-                output.positionCS = float4(input.positionOS.xy * 2 - 1, 0, 1);
-                output.uv = input.texcoord;
-                #if UNITY_UV_STARTS_AT_TOP
-                output.uv.y = 1 - output.uv.y;
-                #endif
-                return output;
-            }
-
-            float2 Fragment(Varyings input) : SV_TARGET
-            {
-                float2 offset = float2(_BlitTexture_TexelSize.x, 0.0f);
-                float2 depth2 = 0.0f;
-                int range = 3;
-                for (int x = -range; x <= range; x++)
-                {
-                    float2 depthMoments = SAMPLE_TEXTURE2D(_BlitTexture, sampler_LinearClamp, input.uv + offset * x).rg;
-                    depth2 += depthMoments;
-                }
-                return depth2 / (range * 2.0f + 1.0f);
+                return SampleTent(_BlitTexture, sampler_BlitTexture, _InputTexelSize, _InputMipLevel, input.positionCS, _BlurDirection);
             }
             ENDHLSL
         }

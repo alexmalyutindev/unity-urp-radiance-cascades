@@ -315,15 +315,9 @@ MonoBehaviour:
   m_Name: RadianceCascades
   m_EditorClassIdentifier: AlexMalyutinDev.RadianceCascades::AlexMalyutinDev.RadianceCascades.RadianceCascades
   active: 1
-  RenderingType:
-    m_OverrideState: 1
-    m_Value: 0
   RayScale:
     m_OverrideState: 1
     m_Value: 0.1
-  UseSH:
-    m_OverrideState: 1
-    m_Value: 0
 --- !u!114 &-3674277848186640007
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -448,6 +442,9 @@ MonoBehaviour:
     m_OverrideState: 1
     m_Value: {r: 1, g: 1, b: 1, a: 1}
   highQualityFiltering:
+    m_OverrideState: 1
+    m_Value: 0
+  filter:
     m_OverrideState: 1
     m_Value: 0
   downscale:

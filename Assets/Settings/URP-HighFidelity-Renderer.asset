@@ -14,7 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_Active: 1
   Resources: {fileID: 11400000, guid: 12d0b21bf1a6143f5bc8242361cc85ea, type: 2}
-  showDebugView: 1
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0

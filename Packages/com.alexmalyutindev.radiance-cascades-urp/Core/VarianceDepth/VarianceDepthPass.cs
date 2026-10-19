@@ -18,12 +18,15 @@ namespace AlexMalyutinDev.RadianceCascades
 
     public class VarianceDepthPass : ScriptableRenderPass
     {
+        private static readonly int InputMipLevel = Shader.PropertyToID("_InputMipLevel");
+        private static readonly int InputTexelSize = Shader.PropertyToID("_InputTexelSize");
+        private static readonly int BlurDirection = Shader.PropertyToID("_BlurDirection");
+
         private const int DepthToMomentsPass = 0;
-        private const int BlurVerticalPass = 1;
-        private const int BlurHorizontalPass = 2;
+        private const int BlurDirectionalPass = 1;
+
         private readonly Material _material;
         private readonly RadianceCascadesRenderingData _radianceCascadesRenderingData;
-        private RTHandle _tempBuffer;
 
         public VarianceDepthPass(Material material, RadianceCascadesRenderingData radianceCascadesRenderingData)
         {
@@ -35,9 +38,12 @@ namespace AlexMalyutinDev.RadianceCascades
         private class PassData
         {
             public TextureHandle FrameDepth;
-            public TextureHandle TempBuffer;
+            public TextureHandle IntermediateDownsampleBuffer;
             public TextureHandle VarianceDepth;
             public Material Material;
+
+            public int TargetMipsCount;
+            public Vector2Int TargetResolution;
         }
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
@@ -57,31 +63,54 @@ namespace AlexMalyutinDev.RadianceCascades
             passData.FrameDepth = resourceData.activeDepthTexture;
             builder.UseTexture(passData.FrameDepth);
 
-            var desc = new TextureDesc(frameDesc.width >> 1, frameDesc.height >> 1)
+            var desc = new TextureDesc(frameDesc.width / 2, frameDesc.height / 2)
             {
                 name = "VarianceDepth",
-                colorFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.RGFloat, false),
+                colorFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGBFloat, false),
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+                useMipMap = true,
+                autoGenerateMips = false,
             };
+            passData.TargetResolution = new Vector2Int(desc.width, desc.height);
+            passData.TargetMipsCount = Mathf.Max(1, (int)Mathf.Log(desc.height, 2) - 1);
 
             passData.VarianceDepth = renderGraph.CreateTexture(desc);
+            builder.UseTexture(passData.VarianceDepth, AccessFlags.Write);
             varianceDepthData.VarianceDepth = passData.VarianceDepth;
-            builder.UseTexture(passData.VarianceDepth, AccessFlags.ReadWrite);
-
-            desc.name = "Temp";
-            passData.TempBuffer = builder.CreateTransientTexture(desc);
+            
+            var intermediateDesc = desc;
+            intermediateDesc.name = "IntermediateDownsampleBuffer";
+            passData.IntermediateDownsampleBuffer = builder.CreateTransientTexture(intermediateDesc);
 
             builder.SetRenderFunc<PassData>(static (data, context) =>
             {
                 var cmd = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
+                var width = data.TargetResolution.x;
+                var height = data.TargetResolution.y;
 
-                cmd.SetRenderTarget(data.VarianceDepth);
+                cmd.SetRenderTarget(data.VarianceDepth, 0);
                 BlitUtils.BlitTexture(cmd, data.FrameDepth, data.Material, DepthToMomentsPass);
+                cmd.GenerateMips(data.VarianceDepth);
 
-                cmd.SetRenderTarget(data.TempBuffer);
-                BlitUtils.BlitTexture(cmd, data.VarianceDepth, data.Material, BlurVerticalPass);
+                for (int mipLevel = 0; mipLevel < data.TargetMipsCount; mipLevel++)
+                {
+                    cmd.SetGlobalVector(InputTexelSize, new Vector4(1.0f / width, 1.0f / height, width, height));
 
-                cmd.SetRenderTarget(data.VarianceDepth);
-                BlitUtils.BlitTexture(cmd, data.TempBuffer, data.Material, BlurHorizontalPass);
+                    cmd.SetGlobalVector(BlurDirection, new Vector4(2.0f, 0.0f));
+
+                    cmd.SetRenderTarget(data.IntermediateDownsampleBuffer, mipLevel);
+                    cmd.SetGlobalInteger(InputMipLevel, mipLevel);
+                    BlitUtils.BlitTexture(cmd, data.VarianceDepth, data.Material, BlurDirectionalPass);
+
+                    cmd.SetGlobalVector(BlurDirection, new Vector4(0.0f, 2.0f));
+
+                    cmd.SetRenderTarget(data.VarianceDepth, mipLevel);
+                    cmd.SetGlobalInteger(InputMipLevel, mipLevel);
+                    BlitUtils.BlitTexture(cmd, data.IntermediateDownsampleBuffer, data.Material, BlurDirectionalPass);
+                    width /= 2;
+                    height /= 2;
+                }
             });
         }
     }

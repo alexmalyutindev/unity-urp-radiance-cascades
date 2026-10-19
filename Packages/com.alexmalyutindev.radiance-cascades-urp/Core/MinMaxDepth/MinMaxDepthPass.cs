@@ -43,6 +43,7 @@ namespace AlexMalyutinDev.RadianceCascades
         {
             public TextureHandle MinMaxDepth;
             public TextureHandle IntermediateDownsampleBuffer;
+            public TextureHandle Test;
 
             public TextureHandle FrameDepth;
             public Material Material;
@@ -89,52 +90,85 @@ namespace AlexMalyutinDev.RadianceCascades
 
             if (SystemInfo.graphicsDeviceType is not (GraphicsDeviceType.Metal or GraphicsDeviceType.Vulkan))
             {
-                desc.name = "Temp";
-                desc.width >>= 1;
-                desc.height >>= 1;
-                desc.useMipMap = false;
-                passData.IntermediateDownsampleBuffer = builder.CreateTransientTexture(desc);
+                var intermediateDesc = desc;
+                intermediateDesc.name = "Temp";
+                intermediateDesc.width >>= 1;
+                intermediateDesc.height >>= 1;
+                intermediateDesc.useMipMap = false;
+                passData.IntermediateDownsampleBuffer = builder.CreateTransientTexture(intermediateDesc);
+            }
+
+            // NOTE: Test target!
+            if (false)
+            {
+                desc.name = "Test";
+                desc.colorFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGBFloat, false);
+                passData.Test = builder.CreateTransientTexture(desc);
             }
 
             builder.SetRenderFunc<PassData>(static (data, context) =>
             {
                 var cmd = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
 
-                cmd.SetRenderTarget(data.MinMaxDepth, 0, CubemapFace.Unknown);
-                cmd.SetGlobalInteger(InputMipLevelId, 0);
-                cmd.SetGlobalFloat(ScaleId, 1);
-                cmd.SetGlobalVector(TargetResolutionId, data.TargetResolution);
-                cmd.SetGlobalVector(InputResolutionId, data.InputResolution);
-                BlitUtils.BlitTexture(cmd, data.FrameDepth, data.Material, DepthToMinMaxDepth);
-
-                var width = (int)data.TargetResolution.x;
-                var height = (int)data.TargetResolution.y;
-                for (int mipLevel = 1; mipLevel < data.TargetMipsCount; mipLevel++)
+                if (false)
                 {
-                    cmd.SetGlobalVector(InputResolutionId, new Vector4(width, height));
-
-                    if (SystemInfo.graphicsDeviceType is GraphicsDeviceType.Metal or GraphicsDeviceType.Vulkan)
+                    var w = Mathf.FloorToInt(data.InputResolution.x / 2);
+                    var h = Mathf.FloorToInt(data.InputResolution.y / 2);
+                    for (int mipLevel = 0; mipLevel < data.TargetMipsCount - 2; mipLevel++)
                     {
-                        cmd.SetGlobalInteger(InputMipLevelId, mipLevel - 1);
                         cmd.SetRenderTarget(data.MinMaxDepth, mipLevel);
-                        BlitUtils.BlitTexture(cmd, data.MinMaxDepth, data.Material, MinMaxDepthMipPass);
+                        cmd.SetGlobalVector("_TargetResolution", new Vector4(w, h));
+                        BlitUtils.BlitTexture(cmd, data.FrameDepth, data.Material, 3);
+
+                        w = Mathf.Max(1, w / 2);
+                        h = Mathf.Max(1, h / 2);
                     }
-                    else
+                }
+                else
+                {
+                    cmd.SetRenderTarget(data.MinMaxDepth, 0, CubemapFace.Unknown);
+                    cmd.SetGlobalInteger(InputMipLevelId, 0);
+                    cmd.SetGlobalFloat(ScaleId, 1);
+                    cmd.SetGlobalVector(TargetResolutionId, data.TargetResolution);
+                    cmd.SetGlobalVector(InputResolutionId, data.InputResolution);
+                    // BlitUtils.BlitTexture(cmd, data.FrameDepth, data.Material, DepthToMinMaxDepth);
+                    BlitUtils.BlitTexture(cmd, data.FrameDepth, data.Material, MinMaxOriginalDepthPass);
+
+                    var width = (int)data.TargetResolution.x;
+                    var height = (int)data.TargetResolution.y;
+                    for (int mipLevel = 1; mipLevel < data.TargetMipsCount; mipLevel++)
                     {
-                        // BUG: Incorrect MinMax values, smth with sample coords.
-                        cmd.SetRenderTarget(data.IntermediateDownsampleBuffer);
-                        cmd.EnableScissorRect(new Rect(0, 0, width, height));
-                        cmd.SetGlobalInteger(InputMipLevelId, mipLevel - 1);
-                        cmd.SetGlobalFloat(ScaleId, 1 << (mipLevel - 1));
-                        BlitUtils.BlitTexture(cmd, data.MinMaxDepth, data.Material, MinMaxDepthMipPass);
-                        cmd.DisableScissorRect();
+                        cmd.SetGlobalVector(InputResolutionId, new Vector4(width, height));
 
-                        cmd.SetRenderTarget(data.MinMaxDepth, mipLevel);
-                        BlitUtils.BlitTexture(cmd, data.IntermediateDownsampleBuffer, data.Material, CopyLevelPass);
+                        if (SystemInfo.graphicsDeviceType is GraphicsDeviceType.Metal or GraphicsDeviceType.Vulkan)
+                        {
+                            cmd.SetGlobalInteger(InputMipLevelId, mipLevel - 1);
+                            cmd.SetRenderTarget(data.MinMaxDepth, mipLevel);
+                            BlitUtils.BlitTexture(cmd, data.MinMaxDepth, data.Material, MinMaxDepthMipPass);
+                        }
+                        else
+                        {
+                            // BUG: Incorrect MinMax values, smth with sample coords.
+                            cmd.SetRenderTarget(data.IntermediateDownsampleBuffer);
+                            cmd.EnableScissorRect(new Rect(0, 0, width, height));
+                            cmd.SetGlobalInteger(InputMipLevelId, mipLevel - 1);
+                            cmd.SetGlobalFloat(ScaleId, 1 << (mipLevel - 1));
+                            BlitUtils.BlitTexture(cmd, data.MinMaxDepth, data.Material, MinMaxDepthMipPass);
+                            cmd.DisableScissorRect();
+
+                            cmd.SetRenderTarget(data.MinMaxDepth, mipLevel);
+                            BlitUtils.BlitTexture(cmd, data.IntermediateDownsampleBuffer, data.Material, CopyLevelPass);
+                        }
+
+                        width = Mathf.FloorToInt(width / 2.0f);
+                        height = Mathf.FloorToInt(height / 2.0f);
                     }
+                }
 
-                    width = Mathf.FloorToInt(width / 2.0f);
-                    height = Mathf.FloorToInt(height / 2.0f);
+                if (false)
+                {
+                    cmd.SetRenderTarget(data.Test, 0);
+                    BlitUtils.BlitTexture(cmd, data.MinMaxDepth, data.Material, 4);
                 }
             });
         }

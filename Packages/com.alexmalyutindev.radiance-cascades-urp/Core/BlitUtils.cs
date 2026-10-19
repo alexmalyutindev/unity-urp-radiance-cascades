@@ -6,20 +6,23 @@ namespace AlexMalyutinDev.RadianceCascades
 {
     public class BlitUtils
     {
-        private static Mesh s_QuadMesh;
         private static readonly int BlitTextureId = Shader.PropertyToID("_BlitTexture");
+        private static readonly int InputMipLevelId = Shader.PropertyToID("_InputMipLevel");
+        private static readonly int InputTexelSizeId = Shader.PropertyToID("_InputTexelSize");
+
+        private static Mesh _quadMesh;
         private static MaterialPropertyBlock _props;
 
         public static void Blit(CommandBuffer cmd, Material material, int pass)
         {
             Initialize();
-            cmd.DrawMesh(s_QuadMesh, Matrix4x4.identity, material, 0, pass);
+            cmd.DrawMesh(_quadMesh, Matrix4x4.identity, material, 0, pass);
         }
 
         public static void Blit(RasterCommandBuffer cmd, Material material, int pass)
         {
             Initialize();
-            cmd.DrawMesh(s_QuadMesh, Matrix4x4.identity, material, 0, pass);
+            cmd.DrawMesh(_quadMesh, Matrix4x4.identity, material, 0, pass);
         }
 
         public static void BlitTexture(CommandBuffer cmd, Texture texture, Material material, int pass)
@@ -28,7 +31,7 @@ namespace AlexMalyutinDev.RadianceCascades
             _props ??= new MaterialPropertyBlock();
             _props.Clear();
             _props.SetTexture(BlitTextureId, texture);
-            cmd.DrawMesh(s_QuadMesh, Matrix4x4.identity, material, 0, pass, _props);
+            cmd.DrawMesh(_quadMesh, Matrix4x4.identity, material, 0, pass, _props);
         }
 
         public static void BlitTexture(RasterCommandBuffer cmd, TextureHandle texture, Material material, int pass)
@@ -37,12 +40,47 @@ namespace AlexMalyutinDev.RadianceCascades
             _props ??= new MaterialPropertyBlock();
             _props.Clear();
             _props.SetTexture(BlitTextureId, texture);
-            cmd.DrawMesh(s_QuadMesh, Matrix4x4.identity, material, 0, pass, _props);
+            cmd.DrawMesh(_quadMesh, Matrix4x4.identity, material, 0, pass, _props);
+        }
+
+        public static void GenerateMips(
+            CommandBuffer cmd,
+            TextureHandle texture,
+            TextureHandle temp,
+            Material material,
+            int baseWidth,
+            int baseHeight,
+            int totalMipCount,
+            int downsamplePassIndex = 0)
+        {
+            int width = baseWidth;
+            int height = baseHeight;
+
+            for (int mip = 0; mip < totalMipCount - 1; mip++)
+            {
+                int nextWidth = Mathf.Max(1, width >> 1);
+                int nextHeight = Mathf.Max(1, height >> 1);
+
+                cmd.SetGlobalVector(InputTexelSizeId, new Vector4(1.0f / width, 1.0f / height, width, height));
+                cmd.SetGlobalInteger(InputMipLevelId, mip);
+
+                cmd.SetRenderTarget(temp, mip + 1, CubemapFace.Unknown, -1);
+                BlitTexture(cmd, texture, material, downsamplePassIndex);
+
+                cmd.CopyTexture(
+                    src: temp, srcElement: 0, srcMip: mip + 1, srcX: 0, srcY: 0, srcWidth: nextWidth,
+                    srcHeight: nextHeight,
+                    dst: texture, dstElement: 0, dstMip: mip + 1, dstX: 0, dstY: 0
+                );
+
+                width = nextWidth;
+                height = nextHeight;
+            }
         }
 
         public static void Initialize()
         {
-            if (!s_QuadMesh)
+            if (!_quadMesh)
             {
                 /*UNITY_NEAR_CLIP_VALUE*/
                 float nearClipZ = -1;
@@ -51,10 +89,10 @@ namespace AlexMalyutinDev.RadianceCascades
                     nearClipZ = 1;
                 }
 
-                s_QuadMesh = new Mesh();
-                s_QuadMesh.vertices = GetQuadVertexPosition(nearClipZ);
-                s_QuadMesh.uv = GetQuadTexCoord();
-                s_QuadMesh.triangles = new int[6] { 0, 1, 2, 0, 2, 3 };
+                _quadMesh = new Mesh();
+                _quadMesh.vertices = GetQuadVertexPosition(nearClipZ);
+                _quadMesh.uv = GetQuadTexCoord();
+                _quadMesh.triangles = new int[6] { 0, 1, 2, 0, 2, 3 };
             }
         }
 

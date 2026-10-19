@@ -12,7 +12,7 @@ Shader "Hidden/MinMaxDepth"
 
         Pass
         {
-            Name "DownSampleDepthMinMax2x2_SingleChannel"
+            Name "0 DownSampleDepthMinMax2x2_SingleChannel"
             ColorMask RG
 
             HLSLPROGRAM
@@ -22,18 +22,33 @@ Shader "Hidden/MinMaxDepth"
             #define SINGLE_CHANNEL
             #include "Common.hlsl"
 
+            float3 ReconstructPositionVS(float2 uv, float eyeDepth)
+            {
+                float2 ndc = mad(uv, 2.0f, -1.0f);
+                return float3(
+                    ndc.x / _ProjMatrix[0][0],
+                    ndc.y / _ProjMatrix[1][1],
+                    1.0f
+                ) * eyeDepth;
+            }
+
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                int2 coord = input.uv * _Scale * (_InputResolution - 1);
-                // coord = floor(input.positionCS.xy) * 2;
-                return LoadDepthMinMax(coord, _InputMipLevel);
+                float2 uv = input.positionCS.xy * _BlitTexture_TexelSize.xy * 2.0f;
+                float4 depths = _BlitTexture.GatherRed(sampler_PointClamp, uv);
+                depths = LinearEyeDepth(depths, _ZBufferParams);
+                // depths.x = length(ReconstructPositionVS(input.uv, depths.x));
+                // depths.y = length(ReconstructPositionVS(input.uv, depths.y));
+                // depths.z = length(ReconstructPositionVS(input.uv, depths.z));
+                // depths.w = length(ReconstructPositionVS(input.uv, depths.w));
+                return float2(Min4(depths), Max4(depths));
             }
             ENDHLSL
         }
 
         Pass
         {
-            Name "DownSampleDepthMinMax2x2"
+            Name "1 DownSampleDepthMinMax2x2"
             ColorMask RG
 
             HLSLPROGRAM
@@ -44,16 +59,14 @@ Shader "Hidden/MinMaxDepth"
 
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                int2 coord = input.uv * _Scale * (_InputResolution - 1);
-                // coord = floor(input.positionCS.xy) * 2;
-                return LoadDepthMinMax(coord, _InputMipLevel);
+                return LoadDepthMinMax(floor(input.positionCS.xy) * 2, _InputMipLevel);
             }
             ENDHLSL
         }
 
         Pass
         {
-            Name "CopyLevel"
+            Name "2 CopyLevel"
 
             HLSLPROGRAM
             #pragma vertex Vertex
@@ -71,7 +84,7 @@ Shader "Hidden/MinMaxDepth"
 
         Pass
         {
-            Name "DepthToMixMaxDepth"
+            Name "3 DepthToMixMaxDepth"
             ColorMask RG
 
             HLSLPROGRAM
@@ -88,14 +101,16 @@ Shader "Hidden/MinMaxDepth"
 
             float2 Fragment(Varyings input) : SV_TARGET
             {
-                int2 range = 1; // floor(_BlitTexture_TexelSize.zw / _TargetResolution.xy);
-                float2 minMaxDepth = float2(1.0f, 0.0f);
+                int2 range = floor(_BlitTexture_TexelSize.zw / _TargetResolution.xy) * 0.5f;
+                float2 minMaxDepth = float2(FLT_MAX, 0.0f);
                 for (int x = -range.x; x <= range.x; x++)
                 {
                     for (int y = -range.y; y <= range.y; y++)
                     {
-                        float2 uv = input.uv + float2(x, y) * _BlitTexture_TexelSize.xy;
+                        float2 uv = input.positionCS.xy / _TargetResolution.xy;
+                        uv += float2(x, y) * _BlitTexture_TexelSize.xy * 2;
                         float depth = SAMPLE_TEXTURE2D_LOD(_BlitTexture, sampler_PointClamp, uv, 0).r;
+                        depth = LinearEyeDepth(depth, _ZBufferParams);
                         minMaxDepth = float2(
                             min(minMaxDepth.x, depth),
                             max(minMaxDepth.y, depth)
@@ -103,6 +118,42 @@ Shader "Hidden/MinMaxDepth"
                     }
                 }
                 return minMaxDepth;
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "[Test] BilateralWeights"
+
+            HLSLPROGRAM
+            #pragma vertex Vertex
+            #pragma fragment Fragment
+
+            #include "Common.hlsl"
+
+            float4 Fragment(Varyings input) : SV_TARGET
+            {
+                int2 coord = input.positionCS.xy;
+                float2 hiDepth = LOAD_TEXTURE2D_LOD(_BlitTexture, coord, 0).rg;
+                float4 lowDepthABCD_min;
+                float4 lowDepthABCD_max;
+
+                int2 lowSize = int2(_BlitTexture_TexelSize.zw / 2) - 1;
+                coord = max(0, (coord - 1) / 2);
+
+                static const int2 neighbours[4] = {int2(0, 0), int2(1, 0), int2(0, 1), int2(1, 1)};
+                UNITY_UNROLL for (int i = 0; i < 4; i++)
+                {
+                    int2 c = min(coord + neighbours[i], lowSize);
+                    float2 sample = LOAD_TEXTURE2D_LOD(_BlitTexture, c, 1).rg;
+                    lowDepthABCD_min[i] = sample.x;
+                    lowDepthABCD_max[i] = sample.y;
+                }
+                float4 weights_min = exp2(-20.0h * abs(hiDepth.x - lowDepthABCD_min));
+                weights_min = saturate(weights_min / dot(1.0f, weights_min));
+                return abs(hiDepth.x - dot(weights_min, lowDepthABCD_min));
+                return abs(hiDepth.x - lowDepthABCD_min);
             }
             ENDHLSL
         }
