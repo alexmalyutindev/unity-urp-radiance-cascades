@@ -196,6 +196,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
     uint2 outputCoords = int2(id.x, id.y + 4 * floor(_CascadeSize.y));
 
+#if 0
     if (_CascadeLevel < 4)
     {
         float2 nextProbeContinuous = probeCenterUV * _NextProbesCount.xy - 0.5f;
@@ -266,6 +267,149 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
             }
         }
     }
+#else
+    if (_CascadeLevel < 4)
+    {
+        static const int2 neighbours[4] = {int2(0, 0), int2(1, 0), int2(0, 1), int2(1, 1)};
+
+        // NOTE: Clamp continuous coordinate BEFORE floor, so border probes get correct bilinear weights.
+        float2 nextProbeContinuous = clamp(
+            probeCenterUV * _NextProbesCount.xy - 0.5f,
+            0.0f,
+            _NextProbesCount.xy - 1.0f
+        );
+        int2 nextProbeLocalId = min(int2(floor(nextProbeContinuous)), int2(_NextProbesCount.xy) - 2);
+
+        float2 bilinearOffsets = nextProbeContinuous - nextProbeLocalId;
+        float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
+        bilinearWeights = bilinearWeights.zxzx * bilinearWeights.wwyy;
+
+        // NOTE: Depth weights are computed per neighbour probe, depth layers are blended (not selected).
+        float2 nextMinMaxDepth[4];
+        UNITY_UNROLL for (int neighbourId = 0; neighbourId < 4; neighbourId++)
+        {
+            nextMinMaxDepth[neighbourId] = LOAD_TEXTURE2D_LOD(
+                _MinMaxDepth,
+                nextProbeLocalId + neighbours[neighbourId],
+                _CascadeLevel + 2
+            ).xy;
+        }
+
+        float depthWeights[2][4];
+        float depthLayerLerps[2][4];
+        UNITY_UNROLL for (int depthLayerId = 0; depthLayerId < 2; ++depthLayerId)
+        {
+            float probeDepth = probeMinMaxDepth[depthLayerId];
+            // TODO: Tune depth tolerance!
+            float depthSigma = max(1e-4f, probeDepth * 0.2f);
+            float weightsSum = 0.0f;
+
+            UNITY_UNROLL for (int neighbourId = 0; neighbourId < 4; neighbourId++)
+            {
+                float2 neighbourMinMaxDepth = nextMinMaxDepth[neighbourId];
+
+                #if 0
+                    float neighbourThickness = neighbourMinMaxDepth.y - neighbourMinMaxDepth.x;
+
+                    // NOTE: Position of the probe inside neighbour's depth range.
+                    // Near-zero range means both layers are the same surface.
+                    depthLayerLerps[depthLayerId][neighbourId] = neighbourThickness > 1e-4f * probeDepth
+                        ? saturate((probeDepth - neighbourMinMaxDepth.x) / neighbourThickness)
+                        : 0.5f;
+                #else
+                    // NOTE: Continuous even for flat neighbours, fades to 0.5 when depth range collapses.
+                    float neighbourThickness = neighbourMinMaxDepth.y - neighbourMinMaxDepth.x;
+                    float rangeConfidence = saturate(neighbourThickness / max(1e-5f, probeDepth * 1e-3f));
+                    float layerLerp = saturate((probeDepth - neighbourMinMaxDepth.x) / max(1e-7f, neighbourThickness));
+                    depthLayerLerps[depthLayerId][neighbourId] = lerp(0.5f, layerLerp, rangeConfidence);
+                #endif
+
+                // NOTE: No penalty inside the range, gaussian falloff outside of it.
+                float depthDistance = max(
+                    0.0f,
+                    max(neighbourMinMaxDepth.x - probeDepth, probeDepth - neighbourMinMaxDepth.y)
+                );
+                float depthWeight = max(
+                    exp(-depthDistance * depthDistance / (2.0f * depthSigma * depthSigma)),
+                    1e-3f
+                );
+
+                depthWeights[depthLayerId][neighbourId] = bilinearWeights[neighbourId] * depthWeight;
+                weightsSum += depthWeights[depthLayerId][neighbourId];
+            }
+
+            UNITY_UNROLL for (int neighbourId = 0; neighbourId < 4; neighbourId++)
+            {
+                depthWeights[depthLayerId][neighbourId] /= weightsSum;
+            }
+        }
+
+        const int rayId = int(coords.x) / int(_CascadeSize.x);
+        const int nextRaysCount = halfCascadeBufferSize.x / int(_NextCascadeSize.x);
+
+    #ifdef FOUR_CHILD_RAYS
+        const int firstChildRayId = -1;
+        const int childRaysCount = 4;
+    #else
+        const int firstChildRayId = 0;
+        const int childRaysCount = 2;
+    #endif
+
+        const float childRayWeight = 1.0f / childRaysCount;
+
+        half4x4 mergedRadiances[2];
+        mergedRadiances[0] = mergedRadiances[1] = 0.0h;
+
+        UNITY_UNROLL for (int depthLayerId = 0; depthLayerId < 2; ++depthLayerId)
+        {
+            UNITY_UNROLL for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
+            {
+                float4 mergedRadiance = 0.0f;
+
+                UNITY_UNROLL for (int neighbourId = 0; neighbourId < 4; neighbourId++)
+                {
+                    int2 nextProbeId = nextProbeLocalId + neighbours[neighbourId];
+
+                    float4 nearRadiance = 0.0f;
+                    float4 farRadiance = 0.0f;
+
+                    UNITY_UNROLL for (int childRayId = firstChildRayId; childRayId < firstChildRayId + childRaysCount; childRayId++)
+                    {
+                        // NOTE: Wrapping is needed only for FOUR_CHILD_RAYS, otherwise it is no-op.
+                        int childColumn = (2 * rayId + childRayId + nextRaysCount) % nextRaysCount;
+
+                        int2 cascadeCoords = nextProbeId + int2(
+                            childColumn * _NextCascadeSize.x,
+                            (4 + depthSectorId) * _NextCascadeSize.y
+                        );
+
+                        nearRadiance += _RadianceCascades[cascadeCoords] * childRayWeight;
+                        farRadiance += _RadianceCascades[cascadeCoords + int2(halfCascadeBufferSize.x, 0)] * childRayWeight;
+                    }
+
+                    mergedRadiance += lerp(nearRadiance, farRadiance, depthLayerLerps[depthLayerId][neighbourId]) * depthWeights[depthLayerId][neighbourId];
+                }
+
+                mergedRadiances[depthLayerId][depthSectorId] = mergedRadiance;
+            }
+        }
+
+        UNITY_UNROLL for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
+        {
+            UNITY_UNROLL for (int depthLayerId = 0; depthLayerId < 2; ++depthLayerId)
+            {
+                int2 targetOffset = int2(depthLayerId * halfCascadeBufferSize.x, _CascadeSize.y * depthSectorId);
+
+                float4 radiance = radiances[depthLayerId][depthSectorId];
+                float4 mergedRadiance = mergedRadiances[depthLayerId][depthSectorId];
+                radiance.rgb += mergedRadiance.rgb * radiance.a;
+                radiance.a *= mergedRadiance.a;
+
+                _RadianceCascades[outputCoords + targetOffset] = radiance;
+            }
+        }
+    }
+#endif
     else
     {
         for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
