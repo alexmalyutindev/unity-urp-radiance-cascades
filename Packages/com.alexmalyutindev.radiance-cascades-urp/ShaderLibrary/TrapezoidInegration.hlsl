@@ -13,15 +13,15 @@ struct Trapezoid
 
 // Builds a trapezoid-shaped opacity function from an interval [minmax.x, minmax.y] offset by a uniformly
 // distributed function with variance = sigma^2
-Trapezoid GetVarianceTrapezoid(half2 minMax, half sigma0)
+Trapezoid GetVarianceTrapezoid(float2 minMax, float sigma0)
 {
     Trapezoid result;
     float halfRange = SQRT3 * sigma0;
     float halfSize = (minMax.y - minMax.x) * 0.5f;
     result.median = 0.5f * (minMax.x + minMax.y);
     result.constHalfSize = abs(halfSize - halfRange);
-    result.linHalfSize = max(HLF_EPS, halfSize + halfRange - result.constHalfSize);
-    result.height = min(1.0f, halfSize / max(HLF_EPS, halfRange));
+    result.linHalfSize = max(1e-7f, halfSize + halfRange - result.constHalfSize);
+    result.height = min(1.0f, halfSize / max(1e-7f, halfRange));
     return result;
 }
 
@@ -32,12 +32,12 @@ float LinearIntegral(float x)
 }
 
 //Integral [0..x] trapezoid(t) dt
-float IntegrateTrapezoid(Trapezoid trapezoid, half x)
+float IntegrateTrapezoid(Trapezoid trapezoid, float x)
 {
-    half constRange = min(abs(x - trapezoid.median), trapezoid.constHalfSize + trapezoid.linHalfSize);
-    half linRange = max(0.0f, constRange - trapezoid.constHalfSize);
-    half constInt = constRange;
-    half linInt = -LinearIntegral(linRange) / trapezoid.linHalfSize;
+    float constRange = min(abs(x - trapezoid.median), trapezoid.constHalfSize + trapezoid.linHalfSize);
+    float linRange = max(0.0f, constRange - trapezoid.constHalfSize);
+    float constInt = constRange;
+    float linInt = -LinearIntegral(linRange) / trapezoid.linHalfSize;
     return (x > trapezoid.median ? 1.0f : -1.0f) * trapezoid.height * (constInt + linInt);
 }
 

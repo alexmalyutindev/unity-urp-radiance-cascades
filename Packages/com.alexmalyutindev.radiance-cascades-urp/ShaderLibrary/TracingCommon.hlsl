@@ -28,7 +28,7 @@ float3 GetRayDirectionVS(float2 angleId, float cascadeLevel)
 
 float3 GetRayDirectionWS(float2 angleId, float cascadeLevel)
 {
-    return mul(_ViewToWorld, float4(GetRayDirectionVS(angleId, cascadeLevel), 0.0f));
+    return mul((float3x3)_ViewToWorld, GetRayDirectionVS(angleId, cascadeLevel));
 }
 
 #endif

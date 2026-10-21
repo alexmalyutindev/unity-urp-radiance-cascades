@@ -1,8 +1,8 @@
 #ifndef COMMON_INCLUDED
 #define COMMON_INCLUDED
 
-static const half HLF_EPS = 1e-7h;
-static const half SQRT3 = sqrt(3.0h);
+static const half HLF_EPS = 1e-5h;
+static const float SQRT3 = sqrt(3.0h);
 
 float4x4 _WorldToView;
 float4x4 _ViewToWorld;

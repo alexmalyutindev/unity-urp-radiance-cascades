@@ -7,6 +7,7 @@
 
 // #define SELF_OCCLUSION
 // #define TRACE_BEFORE_SH
+// #define FOUR_CHILD_RAYS
 
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/GlobalSamplers.hlsl"
@@ -178,10 +179,15 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     tracingArgs.probeMinMaxDepth = probeMinMaxDepth;
     tracingArgs.rayDirection = rayDirectionUV;
     tracingArgs.sharpness = 1 << cascadeIndex;
-    // TODO: Check what ray length and range should be!
-    tracingArgs.tracingRange = float2(1, 1 + (1 << cascadeIndex));;
     tracingArgs.probeSize = _ProbesCount.z * _RayScale;
     tracingArgs.depthThickness = 40.0f;
+    
+    // TODO: Check what ray length and range should be!
+    float spacing = 1 << cascadeIndex;
+    float start = cascadeIndex == 0 ? 0.0 : 1 << (2 * (cascadeIndex - 1));
+    float end = 1 << (2 * cascadeIndex);
+    tracingArgs.tracingRange = float2(start, end) / spacing;
+    // tracingArgs.tracingRange = float2(1.0f, pow(2.0f, _CascadeLevel));
 
     // RayTracing_SoftBins(tracingArgs, radiances[0], radiances[1]);
     RayTracing_TrapezoidIntegration(tracingArgs, radiances[0], radiances[1]);
@@ -394,10 +400,10 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
             float4 radiance = radianceAccum;
 
             // TODO: Check what orientation of cascade probes, possibly I need to use viewDirection as basis here!
-            float3 rayVS = GetRayDirectionVS(int2(rayId, depthSectorId), 0);
-            rayVS = mul(probeToView, rayVS);
-            float3 rayWS = mul((float3x3)_ViewToWorld, rayVS);
-            // rayWS = GetRayDirectionWS(int2(rayId, depthSectorId), 0);
+            // float3 rayVS = GetRayDirectionVS(int2(rayId, depthSectorId), 0);
+            // rayVS = mul(probeToView, rayVS);
+            // float3 rayWS = mul((float3x3)_ViewToWorld, rayVS);
+            float3 rayWS = GetRayDirectionWS(int2(rayId, depthSectorId), 0);
 
             sh0 += radiance * kSHBasis0;
             shX += radiance * rayWS.x * kSHBasis1;
