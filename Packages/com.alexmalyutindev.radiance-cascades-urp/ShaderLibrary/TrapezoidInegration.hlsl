@@ -53,8 +53,8 @@ IntegrationSector PrepareSector(float2 probeMinMaxDepth, float2 depthMoments, fl
         half4(0.0h, 0.0h, 0.0h, 1.0h),
         half4(0.0h, 0.0h, 0.0h, 1.0h)
     );
-    return sector;
 
+#ifdef SELF_OCCLUSION
     // TODO: Self occlusion!
     half sigma = sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x)) * 100.0f;
     // half2 minMax = float2(step(probeMinMaxDepth.x, depthMoments.x), 1.0h);
@@ -80,6 +80,7 @@ IntegrationSector PrepareSector(float2 probeMinMaxDepth, float2 depthMoments, fl
         sector.color[groupId] += directLight * currentTransmittance * saturate(1.0f - transmittance) * 0.25h;
         sector.transmittance[groupId][subRayId] *= saturate(transmittance);
     }
+#endif
 
     return sector;
 }
@@ -87,18 +88,24 @@ IntegrationSector PrepareSector(float2 probeMinMaxDepth, float2 depthMoments, fl
 
 void IntegrateDepthSector(
     float3 probeNormalVS, float3 probeCenterVS,
-    float3 occluderMeanVS, float3 occluderUpperVS, float3 occluderThickVS,
+    float3 occluderMeanVS, float3 occluderFarVS, float3 occluderThickVS,
     half4 directLight,
     half sharpness,
     inout IntegrationSector sector
 )
 {
+    //  mean  far
+    //    /  ╱ 
+    //   / ╱
+    //  /╱
+    // /⎽⎽⎼⎼⎼⎻⎻⎻⎺⎺⎺ thick
+    // 0 ------------> 1
     float meanAngle = dot(probeNormalVS, normalize(occluderMeanVS - probeCenterVS)) * 0.5f + 0.5f;
-    float upperAngle = dot(probeNormalVS, normalize(occluderUpperVS - probeCenterVS)) * 0.5f + 0.5f;
+    float farAngle = dot(probeNormalVS, normalize(occluderFarVS - probeCenterVS)) * 0.5f + 0.5f;
     float thickAngle = dot(probeNormalVS, normalize(occluderThickVS - probeCenterVS)) * 0.5f + 0.5f;
-    float sigma = max(HLF_EPS, meanAngle - upperAngle);
+    float sigma = max(HLF_EPS, farAngle - meanAngle);
 
-    Trapezoid trapezoid = GetVarianceTrapezoid(half2(upperAngle, thickAngle), sigma);
+    Trapezoid trapezoid = GetVarianceTrapezoid(half2(farAngle, thickAngle), sigma);
 
     half prevOcclusion = IntegrateTrapezoid(trapezoid, 0.0f);
 
