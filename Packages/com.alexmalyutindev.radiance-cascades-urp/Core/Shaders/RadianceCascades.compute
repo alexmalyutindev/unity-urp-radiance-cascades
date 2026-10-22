@@ -1,5 +1,6 @@
 #pragma kernel RenderAndMergeCascade
 #pragma kernel CombineSH
+#pragma kernel CombineSH_NEW
 
 /////////////////////
 /// CONFIGURATION ///
@@ -196,7 +197,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
 
     uint2 outputCoords = int2(id.x, id.y + 4 * floor(_CascadeSize.y));
 
-#if 0
+#if 1
     if (_CascadeLevel < 4)
     {
         float2 nextProbeContinuous = probeCenterUV * _NextProbesCount.xy - 0.5f;
@@ -301,7 +302,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
         {
             float probeDepth = probeMinMaxDepth[depthLayerId];
             // TODO: Tune depth tolerance!
-            float depthSigma = max(1e-4f, probeDepth * 0.2f);
+            float depthSigma = max(1e-4f, probeDepth * 0.01f);
             float weightsSum = 0.0f;
 
             UNITY_UNROLL for (int neighbourId = 0; neighbourId < 4; neighbourId++)
@@ -547,6 +548,146 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
             // float3 rayVS = GetRayDirectionVS(int2(rayId, depthSectorId), 0);
             // rayVS = mul(probeToView, rayVS);
             // float3 rayWS = mul((float3x3)_ViewToWorld, rayVS);
+            float3 rayWS = GetRayDirectionWS(int2(rayId, depthSectorId), 0);
+
+            sh0 += radiance * kSHBasis0;
+            shX += radiance * rayWS.x * kSHBasis1;
+            shY += radiance * rayWS.y * kSHBasis1;
+            shZ += radiance * rayWS.z * kSHBasis1;
+        }
+    }
+
+    const float binSolidAngle = FOUR_PI / 16.0f;
+    _RadianceSH[coords]                           = sh0 * binSolidAngle;
+    _RadianceSH[coords + int2(_CascadeSize.x, 0)] = shX * binSolidAngle;
+    _RadianceSH[coords + int2(0, _CascadeSize.y)] = shY * binSolidAngle;
+    _RadianceSH[coords + int2(_CascadeSize.xy)]   = shZ * binSolidAngle;
+}
+
+
+///////////
+/// NEW ///
+///////////
+
+#include "Packages/com.alexmalyutindev.radiance-cascades-urp/ShaderLibrary/BitMaskTracing.hlsl"
+
+float4 _DepthTexelSize;
+Texture2D<float> _SceneDepth;
+Texture2D<float3> _SceneColor;
+
+float LoadLinearDepth(int2 pixel)
+{
+    float depth = LOAD_TEXTURE2D(_SceneDepth, pixel);
+    return LinearEyeDepth(depth, _ZBufferParams);
+}
+
+float3 GetFullResSceneLighting(float2 uv)
+{
+    return SAMPLE_TEXTURE2D_LOD(_SceneColor, sampler_LinearClamp, uv, 0);
+}
+
+[numthreads(8, 4, 1)]
+void CombineSH_NEW(uint3 id : SV_DispatchThreadID)
+{
+    int2 coords = id.xy;
+    if (any(coords.xy >= int2(_ProbesCount.xy)))
+    {
+        // _RadianceSH[coords] = float4(1.0f, 0.0f, 0.0f, 0.0f);
+        return;
+    }
+
+    float2 probeCenterUV = (coords + 0.5f) * _ProbesCount.zw;
+
+    // NOTE: Exact pixel depth and surface slope of the probe.
+    int2 probePixel = int2(probeCenterUV * _DepthTexelSize.zw);
+    float probeDepth = LoadLinearDepth(probePixel);
+    float2 probeDepthSlope = float2(
+        MinAbsSlope(
+            probeDepth - LoadLinearDepth(probePixel - int2(1, 0)),
+            LoadLinearDepth(probePixel + int2(1, 0)) - probeDepth
+        ),
+        MinAbsSlope(
+            probeDepth - LoadLinearDepth(probePixel - int2(0, 1)),
+            LoadLinearDepth(probePixel + int2(0, 1)) - probeDepth
+        )
+    );
+    float2 tracingProbeUV = (probePixel + 0.5f) * _DepthTexelSize.xy;
+
+    float shSpacingPixels = _DepthTexelSize.z * _ProbesCount.z;
+    float cascade0SpacingPixels = _DepthTexelSize.z * _NextProbesCount.z;
+
+    int2 nextCascadeSize = _NextCascadeSize.xy;
+
+    // NOTE: Clamp continuous coordinate BEFORE floor, so border probes get correct weights.
+    float2 nextProbeContinuous = clamp(
+        probeCenterUV * _NextProbesCount.xy - 0.5f,
+        0.0f,
+        _NextProbesCount.xy - 1.0f
+    );
+    int2 nextProbeLocalId = min(int2(floor(nextProbeContinuous)), int2(_NextProbesCount.xy) - 2);
+
+    float2 bilinearOffsets = nextProbeContinuous - nextProbeLocalId;
+    float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
+    bilinearWeights = bilinearWeights.zxzx * bilinearWeights.wwyy;
+
+    const int halfCascadeBufferSize = _CascadeBufferSize / 2;
+
+    // NOTE: Single lerp, position of the pixel's own depth inside blended cascade 0 depth range.
+    float2 nextMinMaxDepth = SampleMinMaxDepth(nextProbeLocalId, bilinearWeights, 1);
+    float depthThickness = max(1e-7f, nextMinMaxDepth.y - nextMinMaxDepth.x);
+    float depthLerp = saturate((probeDepth - nextMinMaxDepth.x) / depthThickness);
+
+    half4 sh0 = 0.0f;
+    half4 shX = 0.0f;
+    half4 shY = 0.0f;
+    half4 shZ = 0.0f;
+
+    UNITY_UNROLL
+    for (int rayId = 0; rayId < 4; rayId++)
+    {
+        float4x4 tracedRadiance;
+        {
+            BitmaskTracingArgs tracingArgs;
+            tracingArgs.probeUV = tracingProbeUV;
+            tracingArgs.probeDepth = probeDepth;
+            tracingArgs.depthSlope = probeDepthSlope;
+            sincos((rayId + 0.5f) * 0.25f * TWO_PI, tracingArgs.rayDirection.y, tracingArgs.rayDirection.x);
+            tracingArgs.texelSize = _DepthTexelSize;
+            // NOTE: Near field [1px, cascade 0 start]. Step as in reference, set to 1.0f for denser tracing.
+            tracingArgs.tracingRange = float2(1.0f, cascade0SpacingPixels);
+            tracingArgs.stepSize = 2.0f * shSpacingPixels;
+            tracingArgs.depthThickness = 40.0f;
+
+            RayTracing_Bitmask(tracingArgs, tracedRadiance);
+        }
+
+        // _RadianceSH[coords] = tracedRadiance[0];
+        // _RadianceSH[coords + int2(_CascadeSize.x, 0)] = tracedRadiance[1];
+        // _RadianceSH[coords + int2(0, _CascadeSize.y)] = tracedRadiance[2];
+        // _RadianceSH[coords + int2(_CascadeSize.xy)] = tracedRadiance[3];
+        // return;
+
+        // UNITY_UNROLL 
+        for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
+        {
+            int2 cascadeBaseOffset = int2(
+                rayId * nextCascadeSize.x,
+                (4 + depthSectorId) * nextCascadeSize.y
+            );
+
+            float4 nearRadiance = GetRadianceWeighted(nextProbeLocalId, cascadeBaseOffset, bilinearWeights);
+            float4 farRadiance = GetRadianceWeighted(
+                nextProbeLocalId,
+                cascadeBaseOffset + int2(halfCascadeBufferSize.x, 0),
+                bilinearWeights
+            );
+            float4 mergedRadiance = lerp(nearRadiance, farRadiance, depthLerp);
+
+            float4 radiance = tracedRadiance[depthSectorId];
+            radiance.rgb += mergedRadiance.rgb * radiance.a;
+            radiance.a *= mergedRadiance.a;
+
+            // TODO: Decode with probe basis (see probeToView notes).
             float3 rayWS = GetRayDirectionWS(int2(rayId, depthSectorId), 0);
 
             sh0 += radiance * kSHBasis0;

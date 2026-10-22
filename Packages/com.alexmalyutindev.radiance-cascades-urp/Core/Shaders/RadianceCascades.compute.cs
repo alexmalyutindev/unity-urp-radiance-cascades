@@ -12,9 +12,11 @@ namespace AlexMalyutinDev.RadianceCascades
         private readonly ComputeShader _compute;
         private readonly int _renderAndMergeKernel;
         private readonly int _combineSHKernel;
+        private readonly int _combineSHKernel_NEW;
 
         private readonly ProfilingSampler _renderMergeSampler;
         private readonly ProfilingSampler _combineShSampler;
+        private readonly ProfilingSampler _combineShSampler_NEW;
         
         private readonly LocalKeyword _bilinearKw;
         private readonly LocalKeyword _bilateralKw;
@@ -29,9 +31,11 @@ namespace AlexMalyutinDev.RadianceCascades
             _vector2IntPool = ArrayPool<Vector2Int>.Create();
             _renderAndMergeKernel = _compute.FindKernel("RenderAndMergeCascade");
             _combineSHKernel = _compute.FindKernel("CombineSH");
+            _combineSHKernel_NEW = _compute.FindKernel("CombineSH_NEW");
 
             _renderMergeSampler = new ProfilingSampler("RadianceCascade.RenderMerge");
             _combineShSampler = new ProfilingSampler("RadianceCascade.CombineSH");
+            _combineShSampler_NEW = new ProfilingSampler("RadianceCascade.CombineSH_NEW");
 
             _packedSH = new Vector4[7];
             _shBuffer = new ComputeBuffer(7, sizeof(float) * 4);
@@ -156,6 +160,53 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.DispatchCompute(_compute, kernel, width / 8, height / 4, 1);
         }
         
+        public struct RenderSHArgs
+        {
+            public UniversalCameraData CameraData;
+            public Vector2Int FrameSize;
+            public TextureHandle FrameColor;
+            public TextureHandle FrameDepth;
+            public TextureHandle MinMaxDepth;
+            public TextureHandle RadianceCascades; 
+            public TextureHandle RadianceSH;
+            public Vector4 CascadeProbesCountWithPadding;
+            public Vector4 CascadeProbesCount;
+        }
+
+        public void ExecuteRenderSH(
+            ComputeCommandBuffer cmd,
+            RenderSHArgs args
+        )
+        {
+            var kernel = _combineSHKernel_NEW;
+            var texelSize = ToTexelSize(args.FrameSize);
+            var threadGroupX = Mathf.FloorToInt(args.CascadeProbesCountWithPadding.x) * 2 / 8;
+            var threadGroupY = Mathf.FloorToInt(args.CascadeProbesCountWithPadding.y) * 2 / 4;
+
+            using var _ = new ProfilingScope(cmd, _combineShSampler_NEW);
+            
+            cmd.SetComputeFloatParam(_compute, "_CascadeLevel", -1);
+
+            var probesCount = new Vector2Int((int)(2 * args.CascadeProbesCount.x), (int)(2 * args.CascadeProbesCount.y));
+            cmd.SetComputeVectorParam(_compute, "_ProbesCount", ToSizeTexel(probesCount));
+            cmd.SetComputeVectorParam(_compute, "_CascadeSize", args.CascadeProbesCountWithPadding * 2.0f);
+
+            cmd.SetComputeMatrixParam(_compute, "_ViewToWorld", args.CameraData.GetViewMatrix().inverse);
+
+            cmd.SetComputeVectorParam(_compute, "_NextProbesCount", args.CascadeProbesCount);
+            cmd.SetComputeVectorParam(_compute, "_NextCascadeSize", args.CascadeProbesCountWithPadding);
+
+            cmd.SetComputeVectorParam(_compute, "_DepthTexelSize", texelSize);
+            cmd.SetComputeTextureParam(_compute, kernel, "_SceneDepth", args.FrameDepth);
+            cmd.SetComputeTextureParam(_compute, kernel, "_SceneColor", args.FrameColor);
+            cmd.SetComputeTextureParam(_compute, kernel, "_MinMaxDepth", args.MinMaxDepth);
+
+            cmd.SetComputeTextureParam(_compute, kernel, "_RadianceCascades", args.RadianceCascades);
+            cmd.SetComputeTextureParam(_compute, kernel, "_RadianceSH",args. RadianceSH);
+
+            cmd.DispatchCompute(_compute, kernel, threadGroupX, threadGroupY, 1);
+        }
+
         void UpdatePackedSHData(SphericalHarmonicsL2 sh, Vector4[] packedSH)
         {
             // Mathematical conversion from Unity's CPU layout to GPU packed layout
@@ -174,6 +225,11 @@ namespace AlexMalyutinDev.RadianceCascades
         private static Vector4 ToSizeTexel(Vector2Int size)
         {
             return new Vector4(size.x, size.y, 1.0f / size.x, 1.0f / size.y);
+        }
+        
+        private static Vector4 ToTexelSize(Vector2Int size)
+        {
+            return new Vector4(1.0f / size.x, 1.0f / size.y, size.x, size.y);
         }
 
         public struct RenderMergeArgs

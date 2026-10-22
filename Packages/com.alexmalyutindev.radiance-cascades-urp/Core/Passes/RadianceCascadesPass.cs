@@ -42,7 +42,9 @@ namespace AlexMalyutinDev.RadianceCascades
 
             public UniversalCameraData CameraData;
 
+            public TextureHandle FrameColor;
             public TextureHandle FrameDepth;
+
             public TextureHandle BlurredColor;
 
             public TextureHandle MinMaxDepth;
@@ -71,8 +73,11 @@ namespace AlexMalyutinDev.RadianceCascades
 
             passData.RayLength = settings.RayScale.value;
 
+            passData.FrameColor = resourceData.activeColorTexture;
+            builder.UseTexture(passData.FrameColor);
             passData.FrameDepth = resourceData.activeDepthTexture;
             builder.UseTexture(passData.FrameDepth);
+
             passData.MinMaxDepth = minMaxDepthData.MinMaxDepth;
             builder.UseTexture(passData.MinMaxDepth);
 
@@ -149,20 +154,42 @@ namespace AlexMalyutinDev.RadianceCascades
 
                 data.Compute.RenderMerge(context.cmd, ref renderArgs);
 
-                var combineArgs = new RadianceCascadesDirectionFirstCS.CombineSHArgs
+                if (true)
                 {
-                    CameraData = data.CameraData,
-                    Cascades = data.Cascades,
-                    CascadesSizeTexel = data.CascadesSizeTexel,
-                    BlurredColor = data.BlurredColor,
-                    MinMaxDepth = data.MinMaxDepth,
-                    VarianceDepth = data.VarianceDepth,
-                    RadianceSH = data.RadianceSH,
-                    CascadeProbesCountWithPadding = data.Cascade0Size,
-                    CascadeProbesCount = data.Cascade0ProbesCount
-                };
+                    var combineArgs = new RadianceCascadesDirectionFirstCS.CombineSHArgs
+                    {
+                        CameraData = data.CameraData,
+                        Cascades = data.Cascades,
+                        CascadesSizeTexel = data.CascadesSizeTexel,
+                        BlurredColor = data.BlurredColor,
+                        MinMaxDepth = data.MinMaxDepth,
+                        VarianceDepth = data.VarianceDepth,
+                        RadianceSH = data.RadianceSH,
+                        CascadeProbesCountWithPadding = data.Cascade0Size,
+                        CascadeProbesCount = data.Cascade0ProbesCount
+                    };
 
-                data.Compute.CombineSH(context.cmd, ref combineArgs);
+                    data.Compute.CombineSH(context.cmd, ref combineArgs);
+                }
+                else
+                {
+                    var renderSHArgs = new RadianceCascadesDirectionFirstCS.RenderSHArgs()
+                    {
+                        CameraData = data.CameraData,
+                        FrameSize = data.ScreenSize,
+                        FrameColor = data.FrameColor,
+                        FrameDepth = data.FrameDepth,
+                        MinMaxDepth = data.MinMaxDepth,
+                        RadianceCascades = data.Cascades,
+                        RadianceSH = data.RadianceSH,
+                        CascadeProbesCountWithPadding = data.Cascade0Size,
+                        CascadeProbesCount = data.Cascade0ProbesCount
+                    };
+                    data.Compute.ExecuteRenderSH(
+                        context.cmd,
+                        renderSHArgs
+                    );
+                }
             });
         }
 
