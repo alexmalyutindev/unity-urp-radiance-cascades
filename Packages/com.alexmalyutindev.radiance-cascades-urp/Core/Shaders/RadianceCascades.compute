@@ -203,10 +203,16 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
         // TODO: Fix border samples!
         int2 nextProbeLocalId = clamp(nextProbeBaseId, 0, _NextProbesCount.xy - 2);
 
+#if 0
         float2 bilinearOffsets = frac(nextProbeContinuous);
         float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
         bilinearWeights = bilinearWeights.zxzx * bilinearWeights.wwyy;
-        bilinearWeights = NormalizeWeights(bilinearWeights);
+        bilinearWeights = (bilinearWeights);
+#else
+        float2 bilinearOffsets = nextProbeContinuous - nextProbeLocalId;
+        float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
+        bilinearWeights = bilinearWeights.zxzx * bilinearWeights.wwyy;
+#endif
 
         half4x4 mergedRadiances[2];
         mergedRadiances[0] = mergedRadiances[1] = 0.0h;
