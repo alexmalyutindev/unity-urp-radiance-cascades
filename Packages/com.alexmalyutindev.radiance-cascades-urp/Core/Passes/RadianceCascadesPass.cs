@@ -154,7 +154,7 @@ namespace AlexMalyutinDev.RadianceCascades
 
                 data.Compute.RenderMerge(context.cmd, ref renderArgs);
 
-                if (true)
+                if (false)
                 {
                     var combineArgs = new RadianceCascadesDirectionFirstCS.CombineSHArgs
                     {

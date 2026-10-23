@@ -1,9 +1,21 @@
+#ifndef BITMASK_TRACING
+#define BITMASK_TRACING
+
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 #include "Packages/com.alexmalyutindev.radiance-cascades-urp/ShaderLibrary/Common.hlsl"
 
 // NOTE: Declare!
 float LoadLinearDepth(int2 pixel);
 float3 GetFullResSceneLighting(float2 uv);
+
+uint CountBits(uint bitMask)
+{
+    bitMask = bitMask - ((bitMask >> 1) & 0x55555555);
+    bitMask = (bitMask & 0x33333333) + ((bitMask >> 2) & 0x33333333);
+    bitMask = (bitMask + (bitMask >> 4)) & 0x0F0F0F0F;
+    return (bitMask * 0x01010101) >> 24;
+}
+
 
 struct BitmaskTracingArgs
 {
@@ -68,7 +80,7 @@ void RayTracing_Bitmask(BitmaskTracingArgs args, out float4x4 sectorRadiance)
     sectorRadiance = 0.0f;
     UNITY_UNROLL for (int sectorId = 0; sectorId < 4; sectorId++)
     {
-        sectorRadiance[sectorId] = float4(0.0f, 0.0f, 0.0f, 1.0f - countbits(visited[sectorId]) * (1.0f / 32.0f));
+        sectorRadiance[sectorId] = float4(0.0f, 0.0f, 0.0f, 1.0f - CountBits(visited[sectorId]) * (1.0f / 32.0f));
     }
 
     UNITY_LOOP
@@ -88,18 +100,13 @@ void RayTracing_Bitmask(BitmaskTracingArgs args, out float4x4 sectorRadiance)
         float backAlpha = dot(forwardVS, normalize(backVS - probeVS)) * 0.5f + 0.5f;
 
         uint4 occluder = IntervalMask128(frontAlpha, backAlpha);
-        // uint4 newBits = occluder & ~visited;
-        uint4 newBits = uint4(
-            occluder[0] & ~visited[0],
-            occluder[1] & ~visited[1],
-            occluder[2] & ~visited[2],
-            occluder[3] & ~visited[3]
-        );
+        uint4 newBits = occluder & ~visited;
         visited |= occluder;
 
         UNITY_UNROLL for (int sectorId = 0; sectorId < 4; sectorId++)
         {
-            sectorRadiance[sectorId] += float4(directLight, -1.0f) * (countbits(newBits[sectorId]) * (1.0f / 32.0f));
+            sectorRadiance[sectorId] += float4(directLight, -1.0f) * (CountBits(newBits[sectorId]) * (1.0f / 32.0f));
         }
     }
 }
+#endif

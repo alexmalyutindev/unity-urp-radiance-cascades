@@ -592,7 +592,7 @@ void CombineSH_NEW(uint3 id : SV_DispatchThreadID)
     int2 coords = id.xy;
     if (any(coords.xy >= int2(_ProbesCount.xy)))
     {
-        // _RadianceSH[coords] = float4(1.0f, 0.0f, 0.0f, 0.0f);
+        _RadianceSH[coords] = float4(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
 
@@ -654,21 +654,21 @@ void CombineSH_NEW(uint3 id : SV_DispatchThreadID)
             sincos((rayId + 0.5f) * 0.25f * TWO_PI, tracingArgs.rayDirection.y, tracingArgs.rayDirection.x);
             tracingArgs.texelSize = _DepthTexelSize;
             // NOTE: Near field [1px, cascade 0 start]. Step as in reference, set to 1.0f for denser tracing.
-            tracingArgs.tracingRange = float2(1.0f, cascade0SpacingPixels);
+            tracingArgs.tracingRange = float2(2.0f, cascade0SpacingPixels * 2.0f);
             tracingArgs.stepSize = 2.0f * shSpacingPixels;
             tracingArgs.depthThickness = 40.0f;
 
             RayTracing_Bitmask(tracingArgs, tracedRadiance);
         }
 
-        // _RadianceSH[coords] = tracedRadiance[0];
+        // TEST
+        // _RadianceSH[coords]                           = tracedRadiance[0];
         // _RadianceSH[coords + int2(_CascadeSize.x, 0)] = tracedRadiance[1];
         // _RadianceSH[coords + int2(0, _CascadeSize.y)] = tracedRadiance[2];
-        // _RadianceSH[coords + int2(_CascadeSize.xy)] = tracedRadiance[3];
+        // _RadianceSH[coords + int2(_CascadeSize.xy)]   = tracedRadiance[3];
         // return;
 
-        // UNITY_UNROLL 
-        for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
+        UNITY_UNROLL for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
         {
             int2 cascadeBaseOffset = int2(
                 rayId * nextCascadeSize.x,

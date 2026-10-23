@@ -47,6 +47,21 @@ namespace AlexMalyutinDev.RadianceCascades
             _shBuffer.Release();
         }
 
+        public struct RenderMergeArgs
+        {
+            public UniversalCameraData CameraData;
+            public TextureHandle Depth;
+            public TextureHandle MinMaxDepth;
+            public TextureHandle VarianceDepth;
+            public Vector4 VarianceDepthSizeTexel;
+            public TextureHandle BlurredColor;
+            public float RayScale;
+            public TextureHandle Target;
+            public Vector4 Cascade0Size;
+            public Vector4 Cascade0ProbesCount;
+            public Vector2Int ScreenSize;
+        }
+
         public void RenderMerge(ComputeCommandBuffer cmd, ref RenderMergeArgs args)
         {
             var kernel = _renderAndMergeKernel;
@@ -128,6 +143,20 @@ namespace AlexMalyutinDev.RadianceCascades
                     Mathf.RoundToInt(probesCounts[i - 1].y * 0.5f)
                 );
             }
+        }
+
+        public struct CombineSHArgs
+        {
+            public UniversalCameraData CameraData;
+            public TextureHandle Cascades;
+            public Vector4 CascadesSizeTexel;
+
+            public TextureHandle BlurredColor;
+            public TextureHandle MinMaxDepth;
+            public TextureHandle VarianceDepth;
+            public TextureHandle RadianceSH;
+            public Vector4 CascadeProbesCountWithPadding;
+            public Vector4 CascadeProbesCount;
         }
 
         public void CombineSH(ComputeCommandBuffer cmd, ref CombineSHArgs args)
@@ -230,35 +259,6 @@ namespace AlexMalyutinDev.RadianceCascades
         private static Vector4 ToTexelSize(Vector2Int size)
         {
             return new Vector4(1.0f / size.x, 1.0f / size.y, size.x, size.y);
-        }
-
-        public struct RenderMergeArgs
-        {
-            public UniversalCameraData CameraData;
-            public TextureHandle Depth;
-            public TextureHandle MinMaxDepth;
-            public TextureHandle VarianceDepth;
-            public Vector4 VarianceDepthSizeTexel;
-            public TextureHandle BlurredColor;
-            public float RayScale;
-            public TextureHandle Target;
-            public Vector4 Cascade0Size;
-            public Vector4 Cascade0ProbesCount;
-            public Vector2Int ScreenSize;
-        }
-
-        public struct CombineSHArgs
-        {
-            public UniversalCameraData CameraData;
-            public TextureHandle Cascades;
-            public Vector4 CascadesSizeTexel;
-
-            public TextureHandle BlurredColor;
-            public TextureHandle MinMaxDepth;
-            public TextureHandle VarianceDepth;
-            public TextureHandle RadianceSH;
-            public Vector4 CascadeProbesCountWithPadding;
-            public Vector4 CascadeProbesCount;
         }
     }
 }
