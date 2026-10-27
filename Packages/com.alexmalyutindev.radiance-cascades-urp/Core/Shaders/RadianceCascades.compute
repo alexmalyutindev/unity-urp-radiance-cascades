@@ -7,14 +7,14 @@
 
 // #define SELF_OCCLUSION
 // #define TRACE_BEFORE_SH
+// #define FOUR_CHILD_RAYS
 
-// TODO: Make own SphericalHarmonics include.
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/GlobalSamplers.hlsl"
-#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/SphericalHarmonics.hlsl"
 
 // TODO: Move all RC code to ShaderLibrary, keep only Unity's wrapper in *.compute file.
 #include "Packages/com.alexmalyutindev.radiance-cascades-urp/ShaderLibrary/Raytracing.hlsl"
+#include "Packages/com.alexmalyutindev.radiance-cascades-urp/ShaderLibrary/SphericalHarmonics.hlsl"
 
 // Input
 float _RayScale;
@@ -151,7 +151,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     uint2 probeCenterCoord = coords % int2(_CascadeSize.xy);
 
     // NOTE: Drop threads outside of cascade probes count.
-    if (coords.y >= uint(_ProbesCount.y) || probeCenterCoord.x > uint(_ProbesCount.x))
+    if (coords.y >= uint(_ProbesCount.y) || probeCenterCoord.x >= uint(_ProbesCount.x))
     {
         // NOTE: Offsetting coords to top
         uint2 targetCoords = int2(id.x, id.y + 7 * floor(_CascadeSize.y));
@@ -172,21 +172,22 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
     radiances[0] = 0.0f;
     radiances[1] = 0.0f;
 
-    // TODO: Check what ray length and range should be!
-    // float2 range = 0.0001f + float2(pow(2.0f, _CascadeLevel) - 1.0f, pow(2.0f, _CascadeLevel + 1.0f) - 1.0f) * _ScreenSize.z * 10;
-    int2 range = int2(0, 1 + (2 << cascadeIndex));
-
-    float cascadeExponent = 1 << cascadeIndex;
     float2 probeMinMaxDepth = LOAD_TEXTURE2D_LOD(_MinMaxDepth, probeCenterCoord, _CascadeLevel + 1).xy;
 
     RayTracingArgs tracingArgs;
     tracingArgs.probeCenterUV = probeCenterUV;
     tracingArgs.probeMinMaxDepth = probeMinMaxDepth;
     tracingArgs.rayDirection = rayDirectionUV;
-    tracingArgs.sharpness = cascadeExponent;
-    tracingArgs.tracingRange = range;
+    tracingArgs.sharpness = 1 << cascadeIndex;
     tracingArgs.probeSize = _ProbesCount.z * _RayScale;
     tracingArgs.depthThickness = 40.0f;
+    
+    // TODO: Check what ray length and range should be!
+    float spacing = 1 << cascadeIndex;
+    float start = cascadeIndex == 0 ? 0.0 : 1 << (2 * (cascadeIndex - 1));
+    float end = 1 << (2 * cascadeIndex);
+    tracingArgs.tracingRange = float2(start, end) / spacing;
+    // tracingArgs.tracingRange = float2(1.0f, pow(2.0f, _CascadeLevel));
 
     // RayTracing_SoftBins(tracingArgs, radiances[0], radiances[1]);
     RayTracing_TrapezoidIntegration(tracingArgs, radiances[0], radiances[1]);
@@ -202,32 +203,50 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
         // TODO: Fix border samples!
         int2 nextProbeLocalId = clamp(nextProbeBaseId, 0, _NextProbesCount.xy - 2);
 
+#if 0
         float2 bilinearOffsets = frac(nextProbeContinuous);
         float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
         bilinearWeights = bilinearWeights.zxzx * bilinearWeights.wwyy;
-        bilinearWeights = NormalizeWeights(bilinearWeights);
+        bilinearWeights = (bilinearWeights);
+#else
+        float2 bilinearOffsets = nextProbeContinuous - nextProbeLocalId;
+        float4 bilinearWeights = float4(bilinearOffsets, 1.0f - bilinearOffsets);
+        bilinearWeights = bilinearWeights.zxzx * bilinearWeights.wwyy;
+#endif
 
         half4x4 mergedRadiances[2];
         mergedRadiances[0] = mergedRadiances[1] = 0.0h;
 
-        UNITY_UNROLL for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
+        UNITY_UNROLL for (int depthLayerId = 0; depthLayerId < 2; ++depthLayerId)
         {
             UNITY_UNROLL for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
             {
                 int2 cascadeBaseOffset = int2(
-                    floor(coords.x * _CascadeSize.z) * _CascadeSize.x + depthLayerId * halfCascadeBufferSize.x,
+                    floor(coords.x * _CascadeSize.z) * _CascadeSize.x,
                     (4 + depthSectorId) * _NextCascadeSize.y
                 );
 
-                cascadeBaseOffset.x = (cascadeBaseOffset.x - _NextCascadeSize.x + halfCascadeBufferSize.x) % halfCascadeBufferSize.x; 
-                UNITY_UNROLL for (uint neighbourRayId = 0; neighbourRayId < 4; neighbourRayId++)
+            #ifdef FOUR_CHILD_RAYS
+                UNITY_UNROLL for (int childRayId = -1; childRayId < 3; childRayId++)
                 {
-                    float4 mergedRadiance = GetRadianceWeighted(nextProbeLocalId, cascadeBaseOffset, bilinearWeights);
-                    mergedRadiances[depthLayerId][depthSectorId] += mergedRadiance * 0.25f;
+                    int2 cascadeOffset = cascadeBaseOffset;
+                    cascadeOffset.x = cascadeOffset.x + childRayId * _NextCascadeSize.x;
+                    cascadeOffset.x = (cascadeOffset.x + halfCascadeBufferSize.x) % halfCascadeBufferSize.x;
+                    cascadeOffset.x += depthLayerId * halfCascadeBufferSize.x;
 
-                    cascadeBaseOffset.x += _NextCascadeSize.x;
-                    cascadeBaseOffset.x %= halfCascadeBufferSize.x;
+                    float4 mergedRadiance = GetRadianceWeighted(nextProbeLocalId, cascadeOffset, bilinearWeights);
+                    mergedRadiances[depthLayerId][depthSectorId] += mergedRadiance * 0.25f;
                 }
+            #else
+                UNITY_UNROLL for (int childRayId = 0; childRayId < 2; childRayId++)
+                {
+                    int2 cascadeOffset = cascadeBaseOffset;
+                    cascadeOffset.x += childRayId * _NextCascadeSize.x + depthLayerId * halfCascadeBufferSize.x;
+
+                    float4 mergedRadiance = GetRadianceWeighted(nextProbeLocalId, cascadeOffset, bilinearWeights);
+                    mergedRadiances[depthLayerId][depthSectorId] += mergedRadiance * 0.5f;
+                }
+            #endif
             }
         }
 
@@ -240,7 +259,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
             float4 mergedRadianceMin = mergedRadiances[0][depthSectorId];
             float4 mergedRadianceMax = mergedRadiances[1][depthSectorId];
 
-            for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
+            for (int depthLayerId = 0; depthLayerId < 2; ++depthLayerId)
             {
                 int2 targetOffset = int2(depthLayerId * halfCascadeBufferSize.x, _CascadeSize.y * depthSectorId);
 
@@ -258,6 +277,7 @@ void RenderAndMergeCascade(uint3 id : SV_DispatchThreadID)
         for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
         {
             half rayDirectionZ = 1.0f - (depthSectorId + 0.5f) * 0.5f;
+            // BUG: rayDirectionUV is stretched to screen aspect ratio!
             half3 rayDirectionVS = normalize(float3(rayDirectionUV, rayDirectionZ));
             half3 rayDirectionWS = -mul((float3x3)_ViewToWorld, rayDirectionVS);
             float3 environmentLighting = GetEnvironmentLighting(rayDirectionWS);
@@ -318,7 +338,7 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
         half4x4 mergedRadiances[2];
         mergedRadiances[0] = mergedRadiances[1] = 0.0h;
 
-        for (uint depthLayerId = 0; depthLayerId < 2u; ++depthLayerId)
+        for (int depthLayerId = 0; depthLayerId < 2; ++depthLayerId)
         {
             for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
             {
@@ -335,27 +355,30 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
         float2 rayDirectionUV;
         {
             sincos((rayId + 0.5f) * 0.25f * TWO_PI, rayDirectionUV.y, rayDirectionUV.x);
-            rayDirectionUV *= _ProbesCount.zw;
+            rayDirectionUV *= _ProbesCount.xx * _ProbesCount.zw;
         }
 
         float4x4 radiances[2];
         radiances[0] = 0.0f;
         radiances[1] = 0.0f;
+        
+        RayTracingArgs tracingArgs;
+        tracingArgs.probeCenterUV = probeCenterUV;
+        tracingArgs.probeMinMaxDepth = probeMinMaxDepth;
+        tracingArgs.rayDirection = rayDirectionUV;
+        tracingArgs.sharpness = 2.0f;
+        tracingArgs.tracingRange = int2(0, 1);
+        tracingArgs.probeSize = _ProbesCount.z * _RayScale;
+        tracingArgs.depthThickness = 40.0f;
 
-        int2 range = int2(0, 1);
-        const float sharpness = 2.0f;
-
-        // TODO: Update args!
-        RayTracing_SoftBins(
-           probeMinMaxDepth,
-           probeCenterUV,
-           rayDirectionUV,
-           range,
-           sharpness,
-           radiances[0],
-           radiances[1]
-        );
+        RayTracing_TrapezoidIntegration(tracingArgs, radiances[0], radiances[1]);
 #endif
+
+        float3 forwardVS = normalize(ReconstructPositionVS(probeCenterUV, 1.0f));
+        float3 rightVS = normalize(cross(float3(0.0f, 1.0f, 0.0f), forwardVS));
+        float3 upVS = normalize(cross(forwardVS, rightVS));
+        rightVS = normalize(cross(upVS, forwardVS));
+        float3x3 probeToView = float3x3(rightVS, upVS, forwardVS);
 
         UNITY_UNROLL for (int depthSectorId = 0; depthSectorId < 4; depthSectorId++)
         {
@@ -381,17 +404,23 @@ void CombineSH(uint3 id : SV_DispatchThreadID)
             }
 
             float4 radiance = radianceAccum;
-            float3 directionWS = GetRayDirectionWS(int2(rayId, depthSectorId), 0);
+
+            // TODO: Check what orientation of cascade probes, possibly I need to use viewDirection as basis here!
+            // float3 rayVS = GetRayDirectionVS(int2(rayId, depthSectorId), 0);
+            // rayVS = mul(probeToView, rayVS);
+            // float3 rayWS = mul((float3x3)_ViewToWorld, rayVS);
+            float3 rayWS = GetRayDirectionWS(int2(rayId, depthSectorId), 0);
 
             sh0 += radiance * kSHBasis0;
-            shX += radiance * directionWS.x * kSHBasis1;
-            shY += radiance * directionWS.y * kSHBasis1;
-            shZ += radiance * directionWS.z * kSHBasis1;
+            shX += radiance * rayWS.x * kSHBasis1;
+            shY += radiance * rayWS.y * kSHBasis1;
+            shZ += radiance * rayWS.z * kSHBasis1;
         }
     }
 
-    _RadianceSH[coords]                           = sh0;
-    _RadianceSH[coords + int2(_CascadeSize.x, 0)] = shX;
-    _RadianceSH[coords + int2(0, _CascadeSize.y)] = shY;
-    _RadianceSH[coords + int2(_CascadeSize.xy)]   = shZ;
+    const float binSolidAngle = FOUR_PI / 16.0f;
+    _RadianceSH[coords]                           = sh0 * binSolidAngle;
+    _RadianceSH[coords + int2(_CascadeSize.x, 0)] = shX * binSolidAngle;
+    _RadianceSH[coords + int2(0, _CascadeSize.y)] = shY * binSolidAngle;
+    _RadianceSH[coords + int2(_CascadeSize.xy)]   = shZ * binSolidAngle;
 }

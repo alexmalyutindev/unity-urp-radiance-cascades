@@ -39,6 +39,7 @@ void RayTracing_TrapezoidIntegration(
     probeCenterVS[1] = probeViewDirectionVS * args.probeMinMaxDepth.y;
     
     float2 rayDirectionUV = args.rayDirection * args.probeSize;
+    args.tracingRange.x = max(0.5, args.tracingRange.x);
 
     UNITY_LOOP
     for (float rayStep = args.tracingRange.x; rayStep < args.tracingRange.y; rayStep += 1.0f)
@@ -52,9 +53,9 @@ void RayTracing_TrapezoidIntegration(
 
         float3 viewDirectionVS = ReconstructPositionVS(rayUV, 1.0f);
 
-        float upperDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
+        float varianceDepth = depthMoments.x + sqrt(max(0.0f, depthMoments.y - depthMoments.x * depthMoments.x));
         float3 occluderMeanVS = viewDirectionVS * depthMoments.x;
-        float3 occluderUpperVS = viewDirectionVS * upperDepth;
+        float3 occluderFarVS = viewDirectionVS * varianceDepth;
         float3 occluderThickVS = viewDirectionVS * (depthMoments.x + args.depthThickness);
 
         UNITY_UNROLL
@@ -62,7 +63,7 @@ void RayTracing_TrapezoidIntegration(
         {
             IntegrateDepthSector(
                 probeNormalVS, probeCenterVS[sectorId],
-                occluderMeanVS, occluderUpperVS, occluderThickVS,
+                occluderMeanVS, occluderFarVS, occluderThickVS,
                 directLight,
                 args.sharpness,
                 integrationSector[sectorId]

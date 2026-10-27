@@ -11,25 +11,24 @@ struct IntegrationSector
 
 float3 GetRayDirectionVS(float2 angleId, float cascadeLevel)
 {
-    float deltaPhi = TWO_PI * pow(0.5f, cascadeLevel) * 0.25f; // 1/4
-    static const float deltaTheta = PI * 0.25f;
-    // Azimuth
-    float phi = (angleId.x + 0.5f) * deltaPhi;
-    // Polar
-    float theta = (angleId.y + 0.5f) * deltaTheta;
+    float raysPerLayer = 4.0f * exp2(cascadeLevel);
 
-    float2 sinCosPhi;
-    float2 sinCosTheta;
-    sincos(phi, sinCosPhi.x, sinCosPhi.y);
-    sincos(theta, sinCosTheta.x, sinCosTheta.y);
+    // Azimuth: same formula as the tracer (deltaPhi = TWO_PI / raysPerLayer).
+    float phi = (angleId.x + 0.5f) * (TWO_PI / raysPerLayer);
 
-    float3 ray = normalize(float3(sinCosTheta.x * sinCosPhi.y, sinCosTheta.x * sinCosPhi.x, sinCosTheta.y));
-    return ray;
+    // Polar: center of the equal-area slab. Sector 0 = toward the camera = +z in Unity VS.
+    float cosTheta = 0.75f - 0.5f * angleId.y;      // 0.75, 0.25, -0.25, -0.75
+    float sinTheta = sqrt(saturate(1.0f - cosTheta * cosTheta));
+
+    float sinPhi, cosPhi;
+    sincos(phi, sinPhi, cosPhi);
+
+    return float3(sinTheta * cosPhi, sinTheta * sinPhi, cosTheta);
 }
 
 float3 GetRayDirectionWS(float2 angleId, float cascadeLevel)
 {
-    return mul(_ViewToWorld, float4(GetRayDirectionVS(angleId, cascadeLevel), 0.0f));
+    return mul((float3x3)_ViewToWorld, GetRayDirectionVS(angleId, cascadeLevel));
 }
 
 #endif
