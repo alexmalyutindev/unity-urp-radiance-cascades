@@ -42,6 +42,7 @@ namespace AlexMalyutinDev.RadianceCascades
 
             public UniversalCameraData CameraData;
 
+            public TextureHandle FrameColor;
             public TextureHandle FrameDepth;
             public TextureHandle BlurredColor;
 
@@ -71,6 +72,8 @@ namespace AlexMalyutinDev.RadianceCascades
 
             passData.RayLength = settings.RayScale.value;
 
+            passData.FrameColor = resourceData.activeColorTexture;
+            builder.UseTexture(passData.FrameColor);
             passData.FrameDepth = resourceData.activeDepthTexture;
             builder.UseTexture(passData.FrameDepth);
             passData.MinMaxDepth = minMaxDepthData.MinMaxDepth;
@@ -151,10 +154,13 @@ namespace AlexMalyutinDev.RadianceCascades
 
                 var combineArgs = new RadianceCascadesDirectionFirstCS.CombineSHArgs
                 {
+                    ScreenSize = data.ScreenSize,
                     CameraData = data.CameraData,
                     Cascades = data.Cascades,
                     CascadesSizeTexel = data.CascadesSizeTexel,
+                    SceneColor = data.FrameColor,
                     BlurredColor = data.BlurredColor,
+                    Depth = data.FrameDepth,
                     MinMaxDepth = data.MinMaxDepth,
                     VarianceDepth = data.VarianceDepth,
                     RadianceSH = data.RadianceSH,

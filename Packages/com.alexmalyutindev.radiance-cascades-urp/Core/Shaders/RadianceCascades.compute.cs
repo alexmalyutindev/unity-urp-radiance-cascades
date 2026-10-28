@@ -50,11 +50,12 @@ namespace AlexMalyutinDev.RadianceCascades
 
             using var _ = new ProfilingScope(cmd, _renderMergeSampler);
 
-            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.DepthTexture, args.Depth);
-            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.MinMaxDepth, args.MinMaxDepth);
+            // Color input
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.BlurredColor, args.BlurredColor);
 
-            cmd.SetComputeVectorParam(_compute, ShaderIds.VarianceDepthSize, args.VarianceDepthSizeTexel);
+            // Depth input
+            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.SceneDepth, args.Depth);
+            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.MinMaxDepth, args.MinMaxDepth);
             cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.VarianceDepth, args.VarianceDepth);
 
             var cascadeBufferSize = new Vector4(8.0f * args.Cascade0Size.x, 8.0f * args.Cascade0Size.y);
@@ -86,15 +87,15 @@ namespace AlexMalyutinDev.RadianceCascades
 
             for (int cascadeLevel = maxCascadeLevel; cascadeLevel >= 0; cascadeLevel--)
             {
-                cmd.SetComputeFloatParam(_compute, "_CascadeLevel", cascadeLevel);
+                cmd.SetComputeFloatParam(_compute, ShaderIds.CascadeLevel, cascadeLevel);
 
                 var cascadeSize = ToSizeTexel(cascadeSizes[cascadeLevel]);
                 var probesCount = ToSizeTexel(probesCounts[cascadeLevel]);
                 var upperCascadeSize = ToSizeTexel(cascadeSizes[cascadeLevel + 1]);
                 var upperProbesCount = ToSizeTexel(probesCounts[cascadeLevel + 1]);
 
-                cmd.SetComputeVectorParam(_compute, "_CascadeSize", cascadeSize);
-                cmd.SetComputeVectorParam(_compute, "_ProbesCount", probesCount);
+                cmd.SetComputeVectorParam(_compute, ShaderIds.CascadeSize, cascadeSize);
+                cmd.SetComputeVectorParam(_compute, ShaderIds.ProbesCount, probesCount);
 
                 cmd.SetComputeVectorParam(_compute, "_NextCascadeSize", upperCascadeSize);
                 cmd.SetComputeVectorParam(_compute, "_NextProbesCount", upperProbesCount);
@@ -133,10 +134,17 @@ namespace AlexMalyutinDev.RadianceCascades
 
             using var _ = new ProfilingScope(cmd, _combineShSampler);
 
-            cmd.SetComputeFloatParam(_compute, "_CascadeLevel", -1);
+            cmd.SetComputeFloatParam(_compute, ShaderIds.CascadeLevel, -1);
+
+            cmd.SetComputeVectorParam(_compute, "_ScreenSize", ToSizeTexel(args.ScreenSize));
+            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.SceneColor, args.SceneColor);
+            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.BlurredColor, args.BlurredColor);
+            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.SceneDepth, args.Depth);
+            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.MinMaxDepth, args.MinMaxDepth);
+            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.VarianceDepth, args.VarianceDepth);
 
             var probesCount = new Vector2Int((int)(2 * args.CascadeProbesCount.x), (int)(2 * args.CascadeProbesCount.y));
-            cmd.SetComputeVectorParam(_compute, "_ProbesCount", ToSizeTexel(probesCount));
+            cmd.SetComputeVectorParam(_compute, ShaderIds.ProbesCount, ToSizeTexel(probesCount));
             cmd.SetComputeVectorParam(_compute, "_CascadeSize", args.CascadeProbesCountWithPadding * 2.0f);
 
             cmd.SetComputeVectorParam(_compute, "_NextProbesCount", args.CascadeProbesCount);
@@ -145,10 +153,8 @@ namespace AlexMalyutinDev.RadianceCascades
             cmd.SetComputeMatrixParam(_compute, "_ViewToWorld", args.CameraData.GetViewMatrix().inverse);
 
             cmd.SetComputeTextureParam(_compute, kernel, "_RadianceCascades", args.Cascades);
-            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.BlurredColor, args.BlurredColor);
-            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.MinMaxDepth, args.MinMaxDepth);
-            cmd.SetComputeTextureParam(_compute, kernel, ShaderIds.VarianceDepth, args.VarianceDepth);
             cmd.SetComputeTextureParam(_compute, kernel, "_RadianceSH", args.RadianceSH);
+
 
             int width = Mathf.FloorToInt(args.CascadeProbesCountWithPadding.x) * 2;
             int height = Mathf.FloorToInt(args.CascadeProbesCountWithPadding.y) * 2;
@@ -176,9 +182,16 @@ namespace AlexMalyutinDev.RadianceCascades
             return new Vector4(size.x, size.y, 1.0f / size.x, 1.0f / size.y);
         }
 
+        private static Vector4 ToTexelSize(Vector2Int size)
+        {
+            return new Vector4(1.0f / size.x, 1.0f / size.y, size.x, size.y);
+        }
+
         public struct RenderMergeArgs
         {
+            public Vector2Int ScreenSize;
             public UniversalCameraData CameraData;
+
             public TextureHandle Depth;
             public TextureHandle MinMaxDepth;
             public TextureHandle VarianceDepth;
@@ -188,21 +201,26 @@ namespace AlexMalyutinDev.RadianceCascades
             public TextureHandle Target;
             public Vector4 Cascade0Size;
             public Vector4 Cascade0ProbesCount;
-            public Vector2Int ScreenSize;
         }
 
         public struct CombineSHArgs
         {
+            public Vector2Int ScreenSize;
             public UniversalCameraData CameraData;
+
             public TextureHandle Cascades;
+            public TextureHandle RadianceSH;
             public Vector4 CascadesSizeTexel;
 
-            public TextureHandle BlurredColor;
-            public TextureHandle MinMaxDepth;
-            public TextureHandle VarianceDepth;
-            public TextureHandle RadianceSH;
             public Vector4 CascadeProbesCountWithPadding;
             public Vector4 CascadeProbesCount;
+
+            public TextureHandle SceneColor;
+            public TextureHandle BlurredColor;
+            public TextureHandle Depth;
+            public TextureHandle MinMaxDepth;
+            public TextureHandle VarianceDepth;
+
         }
     }
 }

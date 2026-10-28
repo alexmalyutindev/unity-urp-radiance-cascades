@@ -5,7 +5,7 @@
 #include "Packages/com.alexmalyutindev.radiance-cascades-urp/ShaderLibrary/Common.hlsl"
 
 // NOTE: Declare!
-float LoadLinearDepth(int2 pixel);
+float LoadLinearDepth(int2 coords);
 float3 GetFullResSceneLighting(float2 uv);
 
 uint CountBits(uint bitMask)
