@@ -237,10 +237,10 @@ Shader "Hidden/RadianceCascade/Blit"
 
                 int2 cascadeSize = floor(_BlitTexture_TexelSize.zw * 0.5f);
                 int3 offsets = int3(cascadeSize, 0);
-                half4 sh0 = LoadSH(lowProbeBaseId, int2(0, 0), cascadeSize.xy, probeWeights);
-                half4 shX = LoadSH(lowProbeBaseId, offsets.xz, cascadeSize.xy, probeWeights);
-                half4 shY = LoadSH(lowProbeBaseId, offsets.zy, cascadeSize.xy, probeWeights);
-                half4 shZ = LoadSH(lowProbeBaseId, offsets.xy, cascadeSize.xy, probeWeights);
+                half4 sh0 = LoadSH(lowProbeBaseId, int2(0, 0), cascadeSize.xy, bilinearWeights);
+                half4 shX = LoadSH(lowProbeBaseId, offsets.xz, cascadeSize.xy, bilinearWeights);
+                half4 shY = LoadSH(lowProbeBaseId, offsets.zy, cascadeSize.xy, bilinearWeights);
+                half4 shZ = LoadSH(lowProbeBaseId, offsets.xy, cascadeSize.xy, bilinearWeights);
 
                 float3 L0L1 = SHEvalLinearL0L1(
                     normalWS,

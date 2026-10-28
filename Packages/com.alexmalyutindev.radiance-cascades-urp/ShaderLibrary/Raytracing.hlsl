@@ -16,6 +16,7 @@ struct RayTracingArgs
     float2 tracingRange;
     float sharpness;
     float probeSize;
+    float stepSize;
     float depthThickness;
 };
 
@@ -42,7 +43,7 @@ void RayTracing_TrapezoidIntegration(
     args.tracingRange.x = max(0.5, args.tracingRange.x);
 
     UNITY_LOOP
-    for (float rayStep = args.tracingRange.x; rayStep < args.tracingRange.y; rayStep += 1.0f)
+    for (float rayStep = args.tracingRange.x; rayStep < args.tracingRange.y; rayStep += args.stepSize)
     {
         float2 rayUV = args.probeCenterUV + rayStep * rayDirectionUV;
 
@@ -131,8 +132,7 @@ half4 RayTracing_SoftBins(
     args.tracingRange.x = max(0.5f, args.tracingRange.x);
 
     UNITY_LOOP
-    // for (float marchDist = args.tracingRange.x; marchDist < args.tracingRange.y; marchDist += args.probeSize)
-    for (float marchDist = args.tracingRange.x; marchDist < args.tracingRange.y; marchDist += 1.0f)
+    for (float marchDist = args.tracingRange.x; marchDist < args.tracingRange.y; marchDist += args.stepSize)
     {
         float2 rayUV = args.probeCenterUV + marchDist * directionUV;
 
