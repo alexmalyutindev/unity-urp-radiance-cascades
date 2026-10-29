@@ -119,7 +119,6 @@ void IntegrateDepthSector(
 
         half occlusion = IntegrateTrapezoid(trapezoid, alpha);
         half transmittance = saturate(pow(saturate(1.0f - (occlusion - prevOcclusion) * 16.0f), sharpness));
-        // half transmittance = saturate(1.0f - (occlusion - prevOcclusion) * 16.0f);
         prevOcclusion = occlusion;
 
         half currentTransmittance = sector.transmittance[groupId][subRayId];
